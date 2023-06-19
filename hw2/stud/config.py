@@ -1,27 +1,31 @@
 import torch
 
 # PATHS
-COARSE_DATA_PATH = 'data/coarse'
-FINE_DATA_PATH = 'data/fine'
-MAP_PATH = 'data/map.json'
+COARSE_DATA_PATH = '../../data/data/coarse-grained/'
+FINE_DATA_PATH = '../../data/data/fine-grained/'
+MAP_PATH = '../../data/data/map/coarse_fine_defs_map.json'
 
 # DATA
-COARSE_TRAIN_DATA = 'data/coarse/train.json'
-COARSE_VAL_DATA = 'data/coarse/dev.json'
-COARSE_TEST_DATA = 'data/coarse/test.json'
+COARSE_TRAIN_DATA = COARSE_DATA_PATH + 'train_coarse_grained.json'
+COARSE_VAL_DATA = COARSE_DATA_PATH + '/val_coarse_grained.json'
+COARSE_TEST_DATA = COARSE_DATA_PATH + '/test_coarse_grained.json'
 
-FINE_TRAIN_DATA = 'data/fine/train.json'
-FINE_VAL_DATA = 'data/fine/dev.json'
-FINE_TEST_DATA = 'data/fine/test.json'
+FINE_TRAIN_DATA = FINE_DATA_PATH + '/train_fine_grained.json'
+FINE_VAL_DATA = FINE_DATA_PATH + '/val_fine_grained.json'
+FINE_TEST_DATA = FINE_DATA_PATH + '/test_fine_grained.json'
+
 
 
 # PADDINGS
 PAD_TOKEN = "<PAD>"
 
 
+# MODEL
+BATCH_SIZE = 32
 
 
 
 
+SEED = 42
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

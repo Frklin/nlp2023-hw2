@@ -1,4 +1,5 @@
 import sys
+sys.path.append("./")
 sys.path.append("./hw2/stud/")
 import torch
 from torch.utils.data import Dataset, DataLoader
