@@ -1,5 +1,8 @@
 import torch
-
+import sys
+sys.path.append("./")
+from load import load_fine_definitions
+from utils import sentence_embeddings
 # PATHS
 COARSE_DATA_PATH = '../../data/data/coarse-grained/'
 FINE_DATA_PATH = '../../data/data/fine-grained/'
@@ -14,6 +17,8 @@ FINE_TRAIN_DATA = FINE_DATA_PATH + '/train_fine_grained.json'
 FINE_VAL_DATA = FINE_DATA_PATH + '/val_fine_grained.json'
 FINE_TEST_DATA = FINE_DATA_PATH + '/test_fine_grained.json'
 
+# INTERMEDIATE DATA
+SENSE_EMBEDDINGS_PATH = '../../data/intermediate/sense_embeddings.npy'
 
 
 # PADDINGS
@@ -29,3 +34,11 @@ BATCH_SIZE = 32
 SEED = 42
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+
+
+
+definitions = load_fine_definitions(MAP_PATH)
+sen_to_idx = {sen: idx for idx, sen in enumerate(definitions.keys())}
+# idx_to_emb = {idx: sentence_embeddings(definitions[sen]) for sen, idx in sen_to_idx.items()}

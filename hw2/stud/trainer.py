@@ -119,6 +119,16 @@
 #     def get_num_fine_coarse_pos_tags(self):
 #         return self.train_dataset.get_num_fine
     
+import torch
+class Trainer:
+    def __init__(self, train_dataloader, dev_dataloader):
+        self.train_dataloader = train_dataloader
+        self.dev_dataloader = dev_dataloader
 
 
-# class Trainer()
+    def train_epoch(self):
+
+        for words, pos_tags, senses in self.train_dataloader:
+            continue
+
+        return None
