@@ -2,11 +2,11 @@ import torch
 import sys
 sys.path.append("./")
 from load import load_fine_definitions
-from utils import sentence_embeddings
+
 # PATHS
-COARSE_DATA_PATH = '../../data/data/coarse-grained/'
-FINE_DATA_PATH = '../../data/data/fine-grained/'
-MAP_PATH = '../../data/data/map/coarse_fine_defs_map.json'
+COARSE_DATA_PATH = '../../data/coarse-grained/'
+FINE_DATA_PATH = '../../data/fine-grained/'
+MAP_PATH = '../../data/map/coarse_fine_defs_map.json'
 
 # DATA
 COARSE_TRAIN_DATA = COARSE_DATA_PATH + 'train_coarse_grained.json'
@@ -23,10 +23,12 @@ SENSE_EMBEDDINGS_PATH = '../../data/intermediate/sense_embeddings.npy'
 
 # PADDINGS
 PAD_TOKEN = "<PAD>"
-
+CLS_TOKEN = "<CLS>"
+SEP_TOKEN = "<SEP>"
+DELIMITER_TOKEN = "\""
 
 # MODEL
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 
 
 
@@ -41,4 +43,6 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 definitions = load_fine_definitions(MAP_PATH)
 sen_to_idx = {sen: idx for idx, sen in enumerate(definitions.keys())}
+
+num_classes_fine = len(sen_to_idx)
 # idx_to_emb = {idx: sentence_embeddings(definitions[sen]) for sen, idx in sen_to_idx.items()}

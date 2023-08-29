@@ -1,0 +1,45 @@
+  | Name       | Type         | Params
+--------------------------------------------
+0 | bert       | RobertaModel | 124 M
+1 | classifier | Linear       | 3.4 M
+--------------------------------------------
+128 M     Trainable params
+0         Non-trainable params
+128 M     Total params
+512.351   Total estimated model params size (MB)
+/home/francesco/miniconda3/envs/nlp2023-hw2/lib/python3.9/site-packages/pytorch_lightning/trainer/data_loading.py:110: UserWarning: The dataloader, val_dataloader 0, does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` (try 8 which is the number of cpus on this machine) in the `DataLoader` init to improve performance.
+  rank_zero_warn(
+/home/francesco/miniconda3/envs/nlp2023-hw2/lib/python3.9/site-packages/pytorch_lightning/trainer/data_loading.py:110: UserWarning: The dataloader, train_dataloader, does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` (try 8 which is the number of cpus on this machine) in the `DataLoader` init to improve performance.
+  rank_zero_warn(
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Epoch 0:   0%|          | 25/54610 [01:00<36:50:10,  2.43s/it, loss=6.21, v_num=ilj6]
+/home/francesco/miniconda3/envs/nlp2023-hw2/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py:685: UserWarning: Detected KeyboardInterrupt, attempting graceful shutdown...
+
+Epoch 0:   0%|          | 26/54610 [01:03<36:52:37,  2.43s/it, loss=5.94, v_num=ilj6]
+GPU available: True, used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs

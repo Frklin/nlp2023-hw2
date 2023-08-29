@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import json
 import config
+import os
 
 class CoarseGrainedDataset(Dataset):
     def __init__(self, file_path):
@@ -34,28 +35,43 @@ class FineGrainedDataset(Dataset):
         self.data = self.load_data(file_path)
         
     def load_data(self, file_path):
+        entries = []
         with open(file_path, 'r') as f:
             row = json.load(f)
-        return list(row.items())
+            # create an entry for each candidate
+            for key, value in row.items():
+                base_words = value["words"]
+                lemmas = value["lemmas"]
+                pos_tags = value["pos_tags"]
+                candidates = value["candidates"]
+                senses = value["senses"]
+                for idx in candidates.keys():
+                    for candidate in candidates[idx]:
+                        base_sentence = base_words[:int(idx)] + [config.DELIMITER_TOKEN + base_words[int(idx)] + config.DELIMITER_TOKEN] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
+                        for candidate in candidates[idx]:
+                            label = 1 if candidate == senses[idx][0] else 0
+                            definition = config.definitions[candidate]
+                            sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
+                            entries.append((sentence, lemmas, pos_tags, candidates, senses, label))
+        return entries
 
     def __getitem__(self, index):
-        key, value = self.data[index]
-        
-        words = value["words"]
-        lemmas = value["lemmas"]
-        pos_tags = value["pos_tags"]
-        candidates = value["candidates"]
-        senses = value["senses"]
+        words, lemmas, pos_tags, candidates, senses, label = self.data[index]
+        # words = value["words"]
+        # lemmas = value["lemmas"]
+        # pos_tags = value["pos_tags"]
+        # candidates = value["candidates"]
+        # senses = value["senses"]
 
-        return words, lemmas, pos_tags, candidates, senses
+        return words, lemmas, pos_tags, candidates, senses, label
     
     def __len__(self):
         return len(self.data)
     
-import os
+
 def load_map(file_path):
     # print current working directory
-    print(os.getcwd())
+    # print(os.getcwd())
     with open(file_path, 'r') as f:
         row = json.load(f)
     return row
@@ -80,13 +96,13 @@ def load_definitions(candidates, mapping=None):
 
     return definitions_map
 
-if __name__ == "__main__":
-    # Esempio di utilizzo
-    dataset = CoarseGrainedDataset("./data/data/coarse-grained/train_coarse_grained.json")
-    # dataset = FineGrainedDataset("./data/data/fine-grained/test_fine_grained.json")
-    mapping = load_map("./data/data/map/coarse_fine_defs_map.json")
+# if __name__ == "__main__":
+#     # Esempio di utilizzo
+#     dataset = CoarseGrainedDataset("./data/coarse-grained/train_coarse_grained.json")
+#     # dataset = FineGrainedDataset("./data/data/fine-grained/test_fine_grained.json")
+#     mapping = load_map("./data/map/coarse_fine_defs_map.json")
 
-    definitions = load_fine_definitions()
+#     definitions = load_fine_definitions()
 
 
 

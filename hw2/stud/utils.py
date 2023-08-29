@@ -5,9 +5,9 @@ import config
 import random
 import numpy as np
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, BertTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained('roberta-base')
+tokenizer = AutoTokenizer.from_pretrained('roberta-base') # SEP TOKEN AND CLS
 bert = AutoModel.from_pretrained('roberta-base')
 
 def seed_everything(seed = 42):
@@ -19,7 +19,25 @@ def seed_everything(seed = 42):
     torch.backends.cudnn.deterministic = True
 
 
-def collate_fn(batch):
+def glossBERT_collate_fn(batch):
+    words_batch, lemmas, pos_tags, candidates_batch, senses_batch, labels = zip(*batch)
+                
+    max_len = max([len(input_sequence) for input_sequence in words_batch])
+    encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
+    input_ids = [enc["input_ids"] for enc in encodings]
+    attention_mask = [enc["attention_mask"] for enc in encodings]
+
+    # pad everything
+    input_ids = torch.tensor(input_ids)
+    # sense_ids = torch.tensor([config.sen_to_idx[sense_id] for sense_id in sense_ids])
+    attention_masks = torch.tensor(attention_mask)
+
+    labels = torch.tensor(labels)
+
+    return input_ids, labels, attention_masks
+
+
+def consec_collate_fn(batch):
     words_batch, lemmas, pos_tags, candidates_batch, senses_batch = zip(*batch)
 
     # Initialize lists to store the input sequences and labels
@@ -88,3 +106,56 @@ def sentence_embeddings(sen):
     input_ids = tokenizer.encode(sen, return_tensors='pt')
     outputs = bert(input_ids)
     return outputs.last_hidden_state.mean(dim=1)
+
+
+
+
+
+
+
+
+
+# def glossBERT_collate_fn(batch):
+#     words_batch, lemmas, pos_tags, candidates_batch, senses_batch = zip(*batch)
+
+#     input_sequences = []
+#     sense_ids = []
+#     attention_masks = []
+#     pos_tags = []
+#     lemmas = []
+#     labels = []
+
+#     for i,words in enumerate(words_batch):
+#         # sentences = []
+#         candidates = candidates_batch[i]
+#         senses = senses_batch[i]
+
+#         for idx in candidates.keys():
+#             query_word = words[int(idx)]
+#             base_sentence = words[:int(idx)] + [config.DELIMITER_TOKEN + words[int(idx)] + config.DELIMITER_TOKEN] + words[int(idx)+1:] + [config.SEP_TOKEN] + [query_word + ":"]
+#             for candidate in candidates[idx]:
+#                 sense_ids.append(candidate)
+#                 definition = config.definitions[candidate]
+#                 # sentence = base_sentence +  " " + definition + " " + config.SEP_TOKEN
+#                 sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
+
+#                 labels.append(1 if candidate == senses[idx][0] else 0)
+
+#                 input_sequences.append(sentence)
+#                 # attention_mask = [1 for _ in range(len(sentence))]
+#                 # attention_masks.append(attention_mask)
+
+                
+#     max_len = max([len(input_sequence) for input_sequence in input_sequences])
+#     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in input_sequences]
+#     input_ids = [enc["input_ids"] for enc in encodings]
+#     attention_mask = [enc["attention_mask"] for enc in encodings]
+
+#     # pad everything
+#     input_ids = torch.tensor(input_ids)
+#     sense_ids = torch.tensor([config.sen_to_idx[sense_id] for sense_id in sense_ids])
+#     attention_masks = torch.tensor(attention_mask)
+
+#     labels = torch.tensor(labels)
+
+#     return input_ids, sense_ids, labels, attention_masks
