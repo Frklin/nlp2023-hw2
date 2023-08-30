@@ -66,8 +66,8 @@ class GlossBERT(pl.LightningModule):
         logits = self.forward(input_ids, attention_mask, indices)
         loss = self.loss(logits, labels)                       
         accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_acc', accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_loss', loss, prog_bar=True)
+        self.log('train_acc', accuracy,  prog_bar=True)
 
         return {'loss': loss}
     
@@ -79,8 +79,8 @@ class GlossBERT(pl.LightningModule):
             logits = self.forward(input_ids, attention_mask, indices)
             loss = self.loss(logits, labels)
             accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-            self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-            self.log('val_acc', accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log('val_loss', loss, prog_bar=True)
+            self.log('val_acc', accuracy, prog_bar=True)
 
         return {'loss': loss}
     
