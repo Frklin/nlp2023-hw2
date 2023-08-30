@@ -7,8 +7,10 @@ import numpy as np
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModel, BertTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained('roberta-base') # SEP TOKEN AND CLS
+tokenizer = AutoTokenizer.from_pretrained('roberta-base') # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
 bert = AutoModel.from_pretrained('roberta-base')
+#print special tokens
+#print(tokenizer.all_special_tokens)
 
 def seed_everything(seed = 42):
     random.seed(seed)
@@ -20,21 +22,22 @@ def seed_everything(seed = 42):
 
 
 def glossBERT_collate_fn(batch):
-    words_batch, lemmas, pos_tags, candidates_batch, senses_batch, labels = zip(*batch)
+    words_batch, lemmas, pos_tags, candidates_batch, labels, idx = zip(*batch)
                 
     max_len = max([len(input_sequence) for input_sequence in words_batch])
     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
     input_ids = [enc["input_ids"] for enc in encodings]
     attention_mask = [enc["attention_mask"] for enc in encodings]
 
+
+
     # pad everything
     input_ids = torch.tensor(input_ids)
-    # sense_ids = torch.tensor([config.sen_to_idx[sense_id] for sense_id in sense_ids])
     attention_masks = torch.tensor(attention_mask)
-
+    indeces = torch.tensor(idx)
     labels = torch.tensor(labels)
 
-    return input_ids, labels, attention_masks
+    return input_ids, labels, attention_masks, indeces
 
 
 def consec_collate_fn(batch):
@@ -159,3 +162,4 @@ def sentence_embeddings(sen):
 #     labels = torch.tensor(labels)
 
 #     return input_ids, sense_ids, labels, attention_masks
+

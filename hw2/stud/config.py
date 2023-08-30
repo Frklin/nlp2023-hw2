@@ -23,8 +23,8 @@ SENSE_EMBEDDINGS_PATH = '../../data/intermediate/sense_embeddings.npy'
 
 # PADDINGS
 PAD_TOKEN = "<PAD>"
-CLS_TOKEN = "<CLS>"
-SEP_TOKEN = "<SEP>"
+CLS_TOKEN = "<s>"
+SEP_TOKEN = "</s>"
 DELIMITER_TOKEN = "\""
 
 # MODEL

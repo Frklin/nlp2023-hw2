@@ -12,7 +12,6 @@ import config
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from transformers import BertModel, BertTokenizer
 
 class GlossBERT(pl.LightningModule):
     def __init__(self, pretrained_model_name='roberta-base'):
@@ -23,33 +22,50 @@ class GlossBERT(pl.LightningModule):
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
         
         # Define the classifier
-        self.classifier = nn.Linear(self.bert.config.hidden_size, config.num_classes_fine)  # num_classes should be defined
+        self.relu = nn.ReLU()
+        self.classifier = nn.Linear(self.bert.config.hidden_size, 2) #config.num_classes_fine)  # num_classes should be defined
+
+        #loss
+        self.loss = nn.CrossEntropyLoss() #ignore_index=0
         
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids, attention_mask, indeces):
         # Get BERT embeddings
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        cls_output = outputs.last_hidden_state[:, 0, :]
         
+        # do a mean of the embeddings
+        sentence_embeddings = outputs.last_hidden_state.mean(dim=1)
+        # take the embeddings of the ambiguous word
+        target_embeddings = outputs.last_hidden_state[torch.arange(outputs.last_hidden_state.size(0)), indeces, :]
+
         # Prediction
-        logits = self.classifier(cls_output)
+        logits = self.relu(self.classifier(target_embeddings))  # cls_output
         return logits
 
     def training_step(self, batch, batch_idx):
-        input_ids, labels, attention_mask = batch
-        # divide the values of input_ids by 10 unless they are 0
+        input_ids, labels, attention_mask, indeces = batch
 
-        logits = self.forward(input_ids, attention_mask)
-        loss = nn.CrossEntropyLoss()(logits, labels)
+        logits = self.forward(input_ids, attention_mask, indeces)
+        loss = self.loss(logits, labels)                       
+        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
         self.log('train_loss', loss)
+        self.log('train_acc', accuracy)
+
         return {'loss': loss}
     
     
     def validation_step(self, batch, batch_idx):
-        # Implement your validation logic here
-        pass
+        input_ids, labels, attention_mask, indeces = batch
+
+        logits = self.forward(input_ids, attention_mask, indeces)
+        loss = self.loss(logits, labels)
+        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+        self.log('val_loss', loss)
+        self.log('val_acc', accuracy)
+
+        return {'loss': loss}
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-5)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
         return optimizer
 
 
