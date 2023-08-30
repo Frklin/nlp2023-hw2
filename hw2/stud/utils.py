@@ -28,13 +28,21 @@ def glossBERT_collate_fn(batch):
     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
     input_ids = [enc["input_ids"] for enc in encodings]
     attention_mask = [enc["attention_mask"] for enc in encodings]
-
+    word_idx = [enc.word_ids() for enc in encodings]
+    # find the target_indexes 
+    indeces = []
+    for i, sen in enumerate(word_idx):
+        target_indexes = []
+        for j in range(idx[i],len(sen)):
+            if sen[j] == idx[i]:
+                target_indexes.append(j)
+        indeces.append(target_indexes)
 
 
     # pad everything
     input_ids = torch.tensor(input_ids)
     attention_masks = torch.tensor(attention_mask)
-    indeces = torch.tensor(idx)
+    # indeces = torch.tensor(indeces)
     labels = torch.tensor(labels)
 
     return input_ids, labels, attention_masks, indeces

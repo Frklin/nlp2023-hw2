@@ -19,6 +19,7 @@ class GlossBERT(pl.LightningModule):
         
         # Initialize the BERT model and tokenizer
         self.bert = AutoModel.from_pretrained(pretrained_model_name)
+
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
         
         # Define the classifier
@@ -28,41 +29,70 @@ class GlossBERT(pl.LightningModule):
         #loss
         self.loss = nn.CrossEntropyLoss() #ignore_index=0
         
-    def forward(self, input_ids, attention_mask, indeces):
+    def forward(self, input_ids, attention_mask, indices):
         # Get BERT embeddings
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         
+        #cls output
+        cls_output = outputs.last_hidden_state[:, 0, :]
+
         # do a mean of the embeddings
         sentence_embeddings = outputs.last_hidden_state.mean(dim=1)
+
         # take the embeddings of the ambiguous word
-        target_embeddings = outputs.last_hidden_state[torch.arange(outputs.last_hidden_state.size(0)), indeces, :]
+        target_embeddings = []
+
+        # Loop over the batch
+        for i, sentence_indices in enumerate(indices):
+            # Extract the embeddings corresponding to the target words in the sentence
+            sentence_embeddings = outputs.last_hidden_state[i, sentence_indices, :]
+            
+            # Average the embeddings along dimension 0 (since sentence_indices is a list of indices)
+            target_embedding = torch.mean(sentence_embeddings, dim=0)
+            
+            # Append the averaged embedding to the list
+            target_embeddings.append(target_embedding)
+
+        # Convert the list of averaged embeddings to a tensor
+        target_embeddings = torch.stack(target_embeddings)
 
         # Prediction
         logits = self.relu(self.classifier(target_embeddings))  # cls_output
         return logits
 
     def training_step(self, batch, batch_idx):
-        input_ids, labels, attention_mask, indeces = batch
+        input_ids, labels, attention_mask, indices = batch
 
-        logits = self.forward(input_ids, attention_mask, indeces)
+        logits = self.forward(input_ids, attention_mask, indices)
         loss = self.loss(logits, labels)                       
         accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-        self.log('train_loss', loss)
-        self.log('train_acc', accuracy)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_acc', accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return {'loss': loss}
     
     
     def validation_step(self, batch, batch_idx):
-        input_ids, labels, attention_mask, indeces = batch
+        with torch.no_grad():
+            input_ids, labels, attention_mask, indices = batch
 
-        logits = self.forward(input_ids, attention_mask, indeces)
-        loss = self.loss(logits, labels)
-        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-        self.log('val_loss', loss)
-        self.log('val_acc', accuracy)
+            logits = self.forward(input_ids, attention_mask, indices)
+            loss = self.loss(logits, labels)
+            accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+            self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log('val_acc', accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return {'loss': loss}
+    
+    def predict(self, sentence, attention_mask, indices):
+        # take in input the tokens and the glosses
+
+        # create the different possibilities
+
+        # get the logits for each possibility
+
+        # return the best one
+        pass
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)

@@ -28,12 +28,12 @@ SEP_TOKEN = "</s>"
 DELIMITER_TOKEN = "\""
 
 # MODEL
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 
 
 
 
-SEED = 42
+SEED = 10
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

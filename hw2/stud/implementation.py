@@ -30,7 +30,7 @@ class StudentModel(Model):
         # Load your models/tokenizer/etc. that only needs to be loaded once when doing inference
         pass
 
-    def predict(self, tokens: List[List[str]]) -> List[List[str]]:
+    def predict(self, sentences: List[Dict]) -> List[List[str]]:
         # STUDENT: implement here your predict function
         # remember to respect the same order of tokens!
         pass

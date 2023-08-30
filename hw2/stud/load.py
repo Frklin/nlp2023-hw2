@@ -38,21 +38,25 @@ class FineGrainedDataset(Dataset):
         entries = []
         with open(file_path, 'r') as f:
             row = json.load(f)
+            i = 0
             # create an entry for each candidate
-            for key, value in row.items():
+            for _, value in row.items():
+                if i == 20:
+                    break
+                i += 1
                 base_words = value["words"]
                 lemmas = value["lemmas"]
                 pos_tags = value["pos_tags"]
                 candidates = value["candidates"]
                 senses = value["senses"]
                 for idx in candidates.keys():
+                    base_sentence = [config.CLS_TOKEN] + base_words[:int(idx)] + [config.DELIMITER_TOKEN + base_words[int(idx)] + config.DELIMITER_TOKEN] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
+                    # for candidate in candidates[idx]:
                     for candidate in candidates[idx]:
-                        base_sentence = [config.CLS_TOKEN] + base_words[:int(idx)] + [config.DELIMITER_TOKEN + base_words[int(idx)] + config.DELIMITER_TOKEN] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
-                        for candidate in candidates[idx]:
-                            label = 1 if candidate == senses[idx][0] else 0
-                            definition = config.definitions[candidate]
-                            sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
-                            entries.append((sentence, lemmas, pos_tags, candidate, label, int(idx)))
+                        label = 1 if candidate == senses[idx][0] else 0
+                        definition = config.definitions[candidate]
+                        sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
+                        entries.append((sentence, lemmas, pos_tags, candidate, label, int(idx)+1))
         return entries
 
     def __getitem__(self, index):
