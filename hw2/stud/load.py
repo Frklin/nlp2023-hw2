@@ -6,7 +6,9 @@ from torch.utils.data import Dataset, DataLoader
 import json
 import config
 import os
+from transformers import AutoTokenizer
 
+tokenizer = AutoTokenizer.from_pretrained('roberta-base') # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
 class CoarseGrainedDataset(Dataset):
     def __init__(self, file_path):
         self.data = self.load_data(file_path)
@@ -41,8 +43,6 @@ class FineGrainedDataset(Dataset):
             i = 0
             # create an entry for each candidate
             for _, value in row.items():
-                if i == 20:
-                    break
                 i += 1
                 base_words = value["words"]
                 lemmas = value["lemmas"]
@@ -50,11 +50,28 @@ class FineGrainedDataset(Dataset):
                 candidates = value["candidates"]
                 senses = value["senses"]
                 for idx in candidates.keys():
-                    base_sentence = [config.CLS_TOKEN] + base_words[:int(idx)] + [config.DELIMITER_TOKEN + base_words[int(idx)] + config.DELIMITER_TOKEN] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
+                    pos = pos_tags[int(idx)]
+                    base_sentence = base_words[:int(idx)] + [config.DELIMITER_TOKEN + base_words[int(idx)] + config.DELIMITER_TOKEN] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
                     # for candidate in candidates[idx]:
+                    # sentence_tokens = tokenizer(" ".join(base_sentence))
                     for candidate in candidates[idx]:
+                        #check the pos
+                        candidate_pos = candidate.split(".")[1]
+                        if config.pos_map[candidate_pos] != pos:
+                            print(pos, candidate_pos)
+                            continue
                         label = 1 if candidate == senses[idx][0] else 0
                         definition = config.definitions[candidate]
+                        # gloss_tokens = tokenizer(definition)
+                        
+                        # tokens = [config.CLS_TOKEN] + sentence_tokens["input_ids"] + [config.SEP_TOKEN]
+                        # segments = [0] * len(tokens)
+                        
+                        # tokens += gloss_tokens["input_ids"] + [config.SEP_TOKEN]
+                        # segments += [1] * (len(gloss_tokens["input_ids"]) + 1)
+
+                        # print(tokens)
+                        # input_ids = tokenizer.convert_tokens_to_ids(tokens)
                         sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
                         entries.append((sentence, lemmas, pos_tags, candidate, label, int(idx)+1))
         return entries

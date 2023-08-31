@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 # from pytorch_lightning import LightningModule
-from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel
+from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel, RobertaForTokenClassification
 import config
 
 
@@ -18,7 +18,10 @@ class GlossBERT(pl.LightningModule):
         super(GlossBERT, self).__init__()
         
         # Initialize the BERT model and tokenizer
+        self.roberta = RobertaForTokenClassification.from_pretrained(pretrained_model_name, num_labels=2)
         self.bert = AutoModel.from_pretrained(pretrained_model_name)
+        for param in self.bert.parameters():
+            param.requires_grad = True
 
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
         
@@ -31,7 +34,7 @@ class GlossBERT(pl.LightningModule):
         
     def forward(self, input_ids, attention_mask, indices):
         # Get BERT embeddings
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask, )
         
         #cls output
         cls_output = outputs.last_hidden_state[:, 0, :]
@@ -45,10 +48,10 @@ class GlossBERT(pl.LightningModule):
         # Loop over the batch
         for i, sentence_indices in enumerate(indices):
             # Extract the embeddings corresponding to the target words in the sentence
-            sentence_embeddings = outputs.last_hidden_state[i, sentence_indices, :]
+            embeddings = outputs.last_hidden_state[i, sentence_indices, :]
             
             # Average the embeddings along dimension 0 (since sentence_indices is a list of indices)
-            target_embedding = torch.mean(sentence_embeddings, dim=0)
+            target_embedding = torch.mean(embeddings, dim=0)
             
             # Append the averaged embedding to the list
             target_embeddings.append(target_embedding)
@@ -57,26 +60,28 @@ class GlossBERT(pl.LightningModule):
         target_embeddings = torch.stack(target_embeddings)
 
         # Prediction
-        logits = self.relu(self.classifier(target_embeddings))  # cls_output
+        logits = self.classifier(target_embeddings)  # cls_output
         return logits
 
     def training_step(self, batch, batch_idx):
         input_ids, labels, attention_mask, indices = batch
 
-        logits = self.forward(input_ids, attention_mask, indices)
-        loss = self.loss(logits, labels)                       
+        logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
+        # logits = self.forward(input_ids, attention_mask, indices)
+        loss = self.loss(logits, labels)   
         accuracy = (logits.argmax(dim=-1) == labels).float().mean()
         self.log('train_loss', loss, prog_bar=True)
         self.log('train_acc', accuracy,  prog_bar=True)
 
         return {'loss': loss}
     
-    
+
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
             input_ids, labels, attention_mask, indices = batch
-
-            logits = self.forward(input_ids, attention_mask, indices)
+            
+            # logits = self.forward(input_ids, attention_mask, indices)
+            logits = self.roberta(input_ids, attention_mask, labels=None, position_ids=indices)
             loss = self.loss(logits, labels)
             accuracy = (logits.argmax(dim=-1) == labels).float().mean()
             self.log('val_loss', loss, prog_bar=True)
@@ -95,7 +100,7 @@ class GlossBERT(pl.LightningModule):
         pass
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-5)
         return optimizer
 
 

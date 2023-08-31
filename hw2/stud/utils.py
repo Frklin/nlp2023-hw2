@@ -23,7 +23,8 @@ def seed_everything(seed = 42):
 
 def glossBERT_collate_fn(batch):
     words_batch, lemmas, pos_tags, candidates_batch, labels, idx = zip(*batch)
-                
+
+
     max_len = max([len(input_sequence) for input_sequence in words_batch])
     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
     input_ids = [enc["input_ids"] for enc in encodings]
@@ -36,7 +37,10 @@ def glossBERT_collate_fn(batch):
         for j in range(idx[i],len(sen)):
             if sen[j] == idx[i]:
                 target_indexes.append(j)
-        indeces.append(target_indexes)
+        #create a tensor of 0 with 1 in the target_indexes
+        t = torch.zeros(len(sen))
+        t[target_indexes] = 1
+        indeces.append(t)
 
 
     # pad everything
@@ -44,8 +48,10 @@ def glossBERT_collate_fn(batch):
     attention_masks = torch.tensor(attention_mask)
     # indeces = torch.tensor(indeces)
     labels = torch.tensor(labels)
+    indeces = pad_sequence(indeces, batch_first=True, padding_value=0).to(config.DEVICE)
+    word_idx = pad_sequence(word_idx, batch_first=True, padding_value=0).to(config.DEVICE)
 
-    return input_ids, labels, attention_masks, indeces
+    return input_ids, labels, attention_masks, word_idx
 
 
 def consec_collate_fn(batch):

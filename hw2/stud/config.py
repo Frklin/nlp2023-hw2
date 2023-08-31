@@ -23,8 +23,8 @@ SENSE_EMBEDDINGS_PATH = '../../data/intermediate/sense_embeddings.npy'
 
 # PADDINGS
 PAD_TOKEN = "<PAD>"
-CLS_TOKEN = "<s>"
-SEP_TOKEN = "</s>"
+CLS_TOKEN = "[CLS]" #"<s>"
+SEP_TOKEN = "[SEP]" #"</s>"
 DELIMITER_TOKEN = "\""
 
 # MODEL
@@ -43,6 +43,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 definitions = load_fine_definitions(MAP_PATH)
 sen_to_idx = {sen: idx for idx, sen in enumerate(definitions.keys())}
+pos_map = {'n': 'NOUN', 'v': 'VERB', 'a': 'ADJ', 's': 'ADJ'}
 
 num_classes_fine = len(sen_to_idx)
 # idx_to_emb = {idx: sentence_embeddings(definitions[sen]) for sen, idx in sen_to_idx.items()}
