@@ -22,7 +22,7 @@ def seed_everything(seed = 42):
 
 
 def glossBERT_collate_fn(batch):
-    words_batch, lemmas, pos_tags, candidates_batch, labels, idx = zip(*batch)
+    words_batch, lemmas, pos_tags, candidates_batch, labels, idx, instance_id, eos_idx = zip(*batch)
 
 
     max_len = max([len(input_sequence) for input_sequence in words_batch])
@@ -32,26 +32,41 @@ def glossBERT_collate_fn(batch):
     word_idx = [enc.word_ids() for enc in encodings]
     # find the target_indexes 
     indeces = []
+    eoses = []
     for i, sen in enumerate(word_idx):
         target_indexes = []
         for j in range(idx[i],len(sen)):
             if sen[j] == idx[i]:
                 target_indexes.append(j)
+            if sen[j] == eos_idx[i]:
+                eoses.append(j)
+                break
         #create a tensor of 0 with 1 in the target_indexes
         t = torch.zeros(len(sen))
         t[target_indexes] = 1
-        indeces.append(t)
+        indeces.append(target_indexes)
 
+    # create the token_type_ids
+    token_type_ids = []
+    for i,eos in enumerate(eos_idx):
+        # create a tensor of 0 with 1 integers
+        t = [0] * len(word_idx[0]) #torch.zeros(len(word_idx[0])).long()
+        t[eos:] = [1] * (len(word_idx[0]) - eos)
+        # put 0 where the attention mask is 0
+        t = [0 if attention_mask[i][j] == 0 else t[j] for j in range(len(t))]
+        token_type_ids.append(t)
 
     # pad everything
     input_ids = torch.tensor(input_ids)
     attention_masks = torch.tensor(attention_mask)
     # indeces = torch.tensor(indeces)
     labels = torch.tensor(labels)
-    indeces = pad_sequence(indeces, batch_first=True, padding_value=0).to(config.DEVICE)
-    word_idx = pad_sequence(word_idx, batch_first=True, padding_value=0).to(config.DEVICE)
+    # indeces = pad_sequence(indeces, batch_first=True, padding_value=0).to(config.DEVICE)
+    # word_idx = torch.tensor(word_idx, dtype=torch.long).to(config.DEVICE)
+    # transform it to a tensor
+    token_type_ids = torch.tensor(token_type_ids, dtype=torch.long).to(config.DEVICE)
 
-    return input_ids, labels, attention_masks, word_idx
+    return input_ids, labels, attention_masks, indeces, candidates_batch, instance_id, token_type_ids
 
 
 def consec_collate_fn(batch):

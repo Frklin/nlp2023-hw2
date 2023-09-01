@@ -44,6 +44,9 @@ class FineGrainedDataset(Dataset):
             # create an entry for each candidate
             for _, value in row.items():
                 i += 1
+                if i==10:
+                    break
+                instance_ids = value["instance_ids"]
                 base_words = value["words"]
                 lemmas = value["lemmas"]
                 pos_tags = value["pos_tags"]
@@ -63,7 +66,8 @@ class FineGrainedDataset(Dataset):
                         label = 1 if candidate == senses[idx][0] else 0
                         definition = config.definitions[candidate]
                         # gloss_tokens = tokenizer(definition)
-                        
+                        config.label_pairs_fine[instance_ids[idx]] = candidate
+                        # config.predictions[instance_ids[idx]] = []
                         # tokens = [config.CLS_TOKEN] + sentence_tokens["input_ids"] + [config.SEP_TOKEN]
                         # segments = [0] * len(tokens)
                         
@@ -73,12 +77,12 @@ class FineGrainedDataset(Dataset):
                         # print(tokens)
                         # input_ids = tokenizer.convert_tokens_to_ids(tokens)
                         sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
-                        entries.append((sentence, lemmas, pos_tags, candidate, label, int(idx)+1))
+                        entries.append((sentence, lemmas, pos_tags, candidate, label, int(idx)+1, instance_ids[idx], len(base_sentence)-1))
         return entries
 
     def __getitem__(self, index):
-        words, lemmas, pos_tags, candidate, label, idx = self.data[index]
-        return words, lemmas, pos_tags, candidate, label, idx
+        words, lemmas, pos_tags, candidate, label, idx, instance_id, eos_idx = self.data[index]
+        return words, lemmas, pos_tags, candidate, label, idx, instance_id, eos_idx
     
     def __len__(self):
         return len(self.data)

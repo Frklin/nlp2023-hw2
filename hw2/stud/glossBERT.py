@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 # from pytorch_lightning import LightningModule
-from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel, RobertaForTokenClassification
+from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel, RobertaForTokenClassification, BertForTokenClassification
 import config
 
 
@@ -24,7 +24,13 @@ class GlossBERT(pl.LightningModule):
             param.requires_grad = True
 
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
-        
+
+        self.accuracy_train = []
+        self.accuracy_val = []
+
+        self.train_predictions = {}
+        self.val_predictions = {}
+
         # Define the classifier
         self.relu = nn.ReLU()
         self.classifier = nn.Linear(self.bert.config.hidden_size, 2) #config.num_classes_fine)  # num_classes should be defined
@@ -32,9 +38,9 @@ class GlossBERT(pl.LightningModule):
         #loss
         self.loss = nn.CrossEntropyLoss() #ignore_index=0
         
-    def forward(self, input_ids, attention_mask, indices):
+    def forward(self, input_ids, attention_mask, indices, token_type_ids):
         # Get BERT embeddings
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask, )
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         
         #cls output
         cls_output = outputs.last_hidden_state[:, 0, :]
@@ -64,28 +70,49 @@ class GlossBERT(pl.LightningModule):
         return logits
 
     def training_step(self, batch, batch_idx):
-        input_ids, labels, attention_mask, indices = batch
+        input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
 
-        logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
-        # logits = self.forward(input_ids, attention_mask, indices)
+        # for each input ids find the first occurence of the delimiter token
+
+
+        # logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
+        logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
         loss = self.loss(logits, labels)   
         accuracy = (logits.argmax(dim=-1) == labels).float().mean()
         self.log('train_loss', loss, prog_bar=True)
         self.log('train_acc', accuracy,  prog_bar=True)
+
+        self.accuracy_train.append(accuracy)
+
+        for i, id in enumerate(instance_id):
+            if id not in self.train_predictions.keys():
+                self.train_predictions[id] = []
+            self.train_predictions[id].append((candidates[i], float(logits[i, 1])))
+        # self.write_prediction(instance_id, candidates, logits[:, 1])
 
         return {'loss': loss}
     
 
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
-            input_ids, labels, attention_mask, indices = batch
+            input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
             
-            # logits = self.forward(input_ids, attention_mask, indices)
-            logits = self.roberta(input_ids, attention_mask, labels=None, position_ids=indices)
+            logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
+            # logits = self.roberta(input_ids, attention_mask, labels=None, target_mask=indices)
             loss = self.loss(logits, labels)
             accuracy = (logits.argmax(dim=-1) == labels).float().mean()
             self.log('val_loss', loss, prog_bar=True)
             self.log('val_acc', accuracy, prog_bar=True)
+            self.accuracy_val.append(accuracy)
+
+            # if instance_id is present in the predictions, append the new predictions
+            # else create a new entry
+            for i, id in enumerate(instance_id):
+                if id not in self.val_predictions.keys():
+                    self.val_predictions[id] = []
+                self.val_predictions[id].append((candidates[i], float(logits[i, 1])))
+                # self.write_prediction(id, candidates[i], logits[i, 1])
+            # self.write_prediction(instance_id, candidates, logits[:, 1])
 
         return {'loss': loss}
     
@@ -102,7 +129,54 @@ class GlossBERT(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-5)
         return optimizer
+    
+    def training_epoch_end(self, outputs) -> None:
+        loss = sum(output['loss'] for output in outputs) / len(outputs)
+        accuracy_train_mean = sum(self.accuracy_train) / len(self.accuracy_train)
+        accuracy_val_mean = sum(self.accuracy_val) / len(self.accuracy_val)
+        self.accuracy_train = []
+        self.accuracy_val = []
 
+        print("Epoch: {}, Train loss: {}, Train accuracy: {}, Val accuracy: {}".format(self.current_epoch, loss, accuracy_train_mean, accuracy_val_mean))
+        # train metrics
+        for instance_id, pred in self.train_predictions.items():
+                pred.sort(key=lambda x: x[1], reverse=True)
+                self.train_predictions[instance_id] = pred[0][0]
+        
+        for instance_id, pred in self.val_predictions.items():
+                pred.sort(key=lambda x: x[1], reverse=True)
+                self.val_predictions[instance_id] = pred[0][0]
+
+        self.print_metrics()
+
+        self.train_predictions = {}
+        self.val_predictions = {}
+            
+            
+
+    def write_prediction(self, istance_id, prediction, value):
+        with open(config.PREDICTION_PATH, 'a') as f:
+            for i in range(len(prediction)):
+                f.write(str(istance_id[i]) + ',' + str(prediction[i]) + ',' + str(value[i].item()) + '\n')
+
+    def print_metrics(self):
+        correct = 0
+        total = 0
+        for instance_id, pred in self.train_predictions.items():
+            if pred == config.label_pairs_fine[instance_id]:
+                correct += 1
+            total += 1
+        train_accuracy = round(correct/total, 3)
+        print("Accuracy for train: {}".format(train_accuracy))
+
+        correct = 0
+        total = 0
+        for instance_id, pred in self.val_predictions.items():
+            if pred == config.label_pairs_fine[instance_id]:
+                correct += 1
+            total += 1
+        val_accuracy = round(correct/total, 3)
+        print("Accuracy for validation: {}".format(val_accuracy))
 
 
 # class ConSecModel(LightningModule):

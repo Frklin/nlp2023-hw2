@@ -17,14 +17,16 @@ FINE_TRAIN_DATA = FINE_DATA_PATH + '/train_fine_grained.json'
 FINE_VAL_DATA = FINE_DATA_PATH + '/val_fine_grained.json'
 FINE_TEST_DATA = FINE_DATA_PATH + '/test_fine_grained.json'
 
+PREDICTION_PATH = '../../data/predictions/prediction.csv'
+
 # INTERMEDIATE DATA
 SENSE_EMBEDDINGS_PATH = '../../data/intermediate/sense_embeddings.npy'
 
 
 # PADDINGS
 PAD_TOKEN = "<PAD>"
-CLS_TOKEN = "[CLS]" #"<s>"
-SEP_TOKEN = "[SEP]" #"</s>"
+CLS_TOKEN = "<s>"
+SEP_TOKEN = "</s>"
 DELIMITER_TOKEN = "\""
 
 # MODEL
@@ -44,6 +46,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 definitions = load_fine_definitions(MAP_PATH)
 sen_to_idx = {sen: idx for idx, sen in enumerate(definitions.keys())}
 pos_map = {'n': 'NOUN', 'v': 'VERB', 'a': 'ADJ', 's': 'ADJ'}
+label_pairs_fine = {}
+label_pairs_course = {}
+
 
 num_classes_fine = len(sen_to_idx)
 # idx_to_emb = {idx: sentence_embeddings(definitions[sen]) for sen, idx in sen_to_idx.items()}
