@@ -99,11 +99,13 @@ def load_map(file_path):
 def load_fine_definitions(file_path):
     mapping = load_map(file_path)
     fine_definitions = {}
+    coarse_to_grain = {}
     for coarse, fine_list in mapping.items():
         for fine_tuple in fine_list:
             (fine, definition) = list(fine_tuple.items())[0]
             fine_definitions[fine] = definition
-    return fine_definitions
+            coarse_to_grain[coarse] = fine
+    return fine_definitions, coarse_to_grain
 
 def load_definitions(candidates, mapping=None):
     if mapping is None:

@@ -43,8 +43,10 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 
-definitions = load_fine_definitions(MAP_PATH)
+definitions, coarse_to_grain = load_fine_definitions(MAP_PATH)
 sen_to_idx = {sen: idx for idx, sen in enumerate(definitions.keys())}
+grain_to_coarse = {grain: coarse for coarse, grain in coarse_to_grain.items()}
+
 pos_map = {'n': 'NOUN', 'v': 'VERB', 'a': 'ADJ', 's': 'ADJ'}
 label_pairs_fine = {}
 label_pairs_course = {}
