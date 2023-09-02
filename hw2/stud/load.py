@@ -54,7 +54,7 @@ class FineGrainedDataset(Dataset):
                 senses = value["senses"]
                 for idx in candidates.keys():
                     pos = pos_tags[int(idx)]
-                    base_sentence = base_words[:int(idx)] + [config.DELIMITER_TOKEN + base_words[int(idx)] + config.DELIMITER_TOKEN] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
+                    base_sentence = [config.CLS_TOKEN] + base_words[:int(idx)] + [base_words[int(idx)]] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + ":"]
                     # for candidate in candidates[idx]:
                     # sentence_tokens = tokenizer(" ".join(base_sentence))
                     for candidate in candidates[idx]:

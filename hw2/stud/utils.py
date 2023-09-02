@@ -24,6 +24,12 @@ def seed_everything(seed = 42):
 def glossBERT_collate_fn(batch):
     words_batch, lemmas, pos_tags, candidates_batch, labels, idx, instance_id, eos_idx = zip(*batch)
 
+    sentence = words_batch[4]
+    sentence = " ".join(sentence)
+    tokens = tokenizer.tokenize(sentence)
+    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    encodings = tokenizer(sentence, return_tensors='pt', padding=True, truncation=True)
+    word_idx = encodings.word_ids()
 
     max_len = max([len(input_sequence) for input_sequence in words_batch])
     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
@@ -33,7 +39,7 @@ def glossBERT_collate_fn(batch):
     # find the target_indexes 
     indeces = []
     eoses = []
-    for i, sen in enumerate(word_idx):
+    for i, sen in enumerate(word_idx):  
         target_indexes = []
         for j in range(idx[i],len(sen)):
             if sen[j] == idx[i]:
