@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 # from pytorch_lightning import LightningModule
-from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel, RobertaForTokenClassification, BertForTokenClassification
+from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel, RobertaForSequenceClassification, BertForTokenClassification, AutoConfig
 import config
 
 
@@ -18,8 +18,10 @@ class GlossBERT(pl.LightningModule):
         super(GlossBERT, self).__init__()
         
         # Initialize the BERT model and tokenizer
-        self.roberta = RobertaForTokenClassification.from_pretrained(pretrained_model_name, num_labels=2)
-        self.bert = AutoModel.from_pretrained(pretrained_model_name)
+        self.roberta = RobertaForSequenceClassification.from_pretrained("roberta-base", type_vocab_size=2, ignore_mismatched_sizes=True)
+        # model = RobertaForSequenceClassification.from_pretrained("roberta-base", config=config)
+        self.bert = AutoModel.from_pretrained(pretrained_model_name, config=config)
+
         for param in self.bert.parameters():
             param.requires_grad = True
 
@@ -70,49 +72,68 @@ class GlossBERT(pl.LightningModule):
         return logits
 
     def training_step(self, batch, batch_idx):
-        input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
+        # input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
 
         # for each input ids find the first occurence of the delimiter token
+        input_ids, token_type_ids, target, attention_mask, labels,  = batch
+        out = self.roberta(input_ids, attention_mask, labels=None, token_type_ids=token_type_ids)
+            
+        logits = out.logits
+        loss = self.loss(logits.view(-1, logits.size(-1)), labels.view(-1))
 
 
-        # logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
-        logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
-        loss = self.loss(logits, labels)   
-        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-        self.log('train_loss', loss, prog_bar=True)
-        self.log('train_acc', accuracy,  prog_bar=True)
+        # # logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
+        # logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
+        # loss = self.loss(logits, labels)   
+        # accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+        # self.log('train_loss', loss, prog_bar=True)
+        # self.log('train_acc', accuracy,  prog_bar=True)
 
-        self.accuracy_train.append(accuracy)
+        # self.accuracy_train.append(accuracy)
 
-        for i, id in enumerate(instance_id):
-            if id not in self.train_predictions.keys():
-                self.train_predictions[id] = []
-            self.train_predictions[id].append((candidates[i], float(logits[i, 1])))
-        # self.write_prediction(instance_id, candidates, logits[:, 1])
+        # for i, id in enumerate(instance_id):
+        #     if id not in self.train_predictions.keys():
+        #         self.train_predictions[id] = []
+        #     self.train_predictions[id].append((candidates[i], float(logits[i, 1])))
+        # # self.write_prediction(instance_id, candidates, logits[:, 1])
 
         return {'loss': loss}
     
 
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
-            input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
+            # input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
+            # input_ids, token_type_ids, target, attention_mask, labels = batch
+            input_ids, token_type_ids, target, attention_mask, labels,  = batch
+            out = self.roberta(input_ids, attention_mask, labels=None, token_type_ids=token_type_ids)
             
-            logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
-            # logits = self.roberta(input_ids, attention_mask, labels=None, target_mask=indices)
-            loss = self.loss(logits, labels)
-            accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-            self.log('val_loss', loss, prog_bar=True)
-            self.log('val_acc', accuracy, prog_bar=True)
-            self.accuracy_val.append(accuracy)
+            logits = out.logits
+            loss = self.loss(logits.view(-1, logits.size(-1)), labels.view(-1))
 
-            # if instance_id is present in the predictions, append the new predictions
-            # else create a new entry
-            for i, id in enumerate(instance_id):
-                if id not in self.val_predictions.keys():
-                    self.val_predictions[id] = []
-                self.val_predictions[id].append((candidates[i], float(logits[i, 1])))
-                # self.write_prediction(id, candidates[i], logits[i, 1])
-            # self.write_prediction(instance_id, candidates, logits[:, 1])
+            
+            
+            
+            
+            
+            # logits = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
+            # # take the first to elemnt of the batch
+        
+            # # logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
+            # # logits = self.roberta(input_ids, attention_mask, labels=None, target_mask=indices)
+            # loss = self.loss(logits, labels)
+            # accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+            # self.log('val_loss', loss, prog_bar=True)
+            # self.log('val_acc', accuracy, prog_bar=True)
+            # self.accuracy_val.append(accuracy)
+
+            # # if instance_id is present in the predictions, append the new predictions
+            # # else create a new entry
+            # for i, id in enumerate(instance_id):
+            #     if id not in self.val_predictions.keys():
+            #         self.val_predictions[id] = []
+            #     self.val_predictions[id].append((candidates[i], float(logits[i, 1])))
+            #     # self.write_prediction(id, candidates[i], logits[i, 1])
+            # # self.write_prediction(instance_id, candidates, logits[:, 1])
 
         return {'loss': loss}
     

@@ -25,13 +25,13 @@ SENSE_EMBEDDINGS_PATH = '../../data/intermediate/sense_embeddings.npy'
 
 # PADDINGS
 PAD_TOKEN = "<PAD>"
-CLS_TOKEN = "<s>"
-SEP_TOKEN = "</s>"
+CLS_TOKEN = "<s>" # "[CLS]" #
+SEP_TOKEN = "</s>" # "[SEP]" #
 DELIMITER_TOKEN = "\""
 
 # MODEL
 BATCH_SIZE = 16
-
+WS = True
 
 
 

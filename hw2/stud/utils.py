@@ -7,7 +7,7 @@ import numpy as np
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModel, BertTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained('roberta-base') # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
+tokenizer = AutoTokenizer.from_pretrained('roberta-base', do_lower_case=True) # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
 bert = AutoModel.from_pretrained('roberta-base')
 #print special tokens
 #print(tokenizer.all_special_tokens)
@@ -21,58 +21,51 @@ def seed_everything(seed = 42):
     torch.backends.cudnn.deterministic = True
 
 
-def glossBERT_collate_fn(batch):
-    words_batch, lemmas, pos_tags, candidates_batch, labels, idx, instance_id, eos_idx = zip(*batch)
+# def glossBERT_collate_fn(batch):
+#     words_batch, lemmas, pos_tags, candidates_batch, labels, idx, instance_id, eos_idx = zip(*batch)
 
-    sentence = words_batch[4]
-    sentence = " ".join(sentence)
-    tokens = tokenizer.tokenize(sentence)
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    encodings = tokenizer(sentence, return_tensors='pt', padding=True, truncation=True)
-    word_idx = encodings.word_ids()
+#     max_len = max([len(input_sequence) for input_sequence in words_batch])
+#     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
+#     input_ids = [enc["input_ids"] for enc in encodings]
+#     attention_mask = [enc["attention_mask"] for enc in encodings]
+#     word_idx = [enc.word_ids() for enc in encodings]
+#     # find the target_indexes 
+#     indeces = []
+#     eoses = []
+#     for i, sen in enumerate(word_idx):  
+#         target_indexes = []
+#         for j in range(idx[i],len(sen)):
+#             if sen[j] == idx[i]:
+#                 target_indexes.append(j)
+#             if sen[j] == eos_idx[i]:
+#                 eoses.append(j)
+#                 break
+#         #create a tensor of 0 with 1 in the target_indexes
+#         t = torch.zeros(len(sen))
+#         t[target_indexes] = 1
+#         indeces.append(target_indexes)
 
-    max_len = max([len(input_sequence) for input_sequence in words_batch])
-    encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in words_batch]
-    input_ids = [enc["input_ids"] for enc in encodings]
-    attention_mask = [enc["attention_mask"] for enc in encodings]
-    word_idx = [enc.word_ids() for enc in encodings]
-    # find the target_indexes 
-    indeces = []
-    eoses = []
-    for i, sen in enumerate(word_idx):  
-        target_indexes = []
-        for j in range(idx[i],len(sen)):
-            if sen[j] == idx[i]:
-                target_indexes.append(j)
-            if sen[j] == eos_idx[i]:
-                eoses.append(j)
-                break
-        #create a tensor of 0 with 1 in the target_indexes
-        t = torch.zeros(len(sen))
-        t[target_indexes] = 1
-        indeces.append(target_indexes)
+#     # create the token_type_ids
+#     token_type_ids = []
+#     for i,eos in enumerate(eos_idx):
+#         # create a tensor of 0 with 1 integers
+#         t = [0] * len(word_idx[0]) #torch.zeros(len(word_idx[0])).long()
+#         t[eos:] = [1] * (len(word_idx[0]) - eos)
+#         # put 0 where the attention mask is 0
+#         t = [0 if attention_mask[i][j] == 0 else t[j] for j in range(len(t))]
+#         token_type_ids.append(t)
 
-    # create the token_type_ids
-    token_type_ids = []
-    for i,eos in enumerate(eos_idx):
-        # create a tensor of 0 with 1 integers
-        t = [0] * len(word_idx[0]) #torch.zeros(len(word_idx[0])).long()
-        t[eos:] = [1] * (len(word_idx[0]) - eos)
-        # put 0 where the attention mask is 0
-        t = [0 if attention_mask[i][j] == 0 else t[j] for j in range(len(t))]
-        token_type_ids.append(t)
+#     # pad everything
+#     input_ids = torch.tensor(input_ids)
+#     attention_masks = torch.tensor(attention_mask)
+#     # indeces = torch.tensor(indeces)
+#     labels = torch.tensor(labels)
+#     # indeces = pad_sequence(indeces, batch_first=True, padding_value=0).to(config.DEVICE)
+#     # word_idx = torch.tensor(word_idx, dtype=torch.long).to(config.DEVICE)
+#     # transform it to a tensor
+#     token_type_ids = torch.tensor(token_type_ids, dtype=torch.long).to(config.DEVICE)
 
-    # pad everything
-    input_ids = torch.tensor(input_ids)
-    attention_masks = torch.tensor(attention_mask)
-    # indeces = torch.tensor(indeces)
-    labels = torch.tensor(labels)
-    # indeces = pad_sequence(indeces, batch_first=True, padding_value=0).to(config.DEVICE)
-    # word_idx = torch.tensor(word_idx, dtype=torch.long).to(config.DEVICE)
-    # transform it to a tensor
-    token_type_ids = torch.tensor(token_type_ids, dtype=torch.long).to(config.DEVICE)
-
-    return input_ids, labels, attention_masks, indeces, candidates_batch, instance_id, token_type_ids
+#     return input_ids, labels, attention_masks, indeces, candidates_batch, instance_id, token_type_ids
 
 
 def consec_collate_fn(batch):
@@ -149,52 +142,78 @@ def sentence_embeddings(sen):
 
 
 
+def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, instance_id, ws=True):
+    
+    target_word = sentence[target_idx]
+
+    if ws:
+        base_sentence = sentence[:target_idx] + ["\""] + [sentence[target_idx]] + ["\""] + sentence[target_idx+1:]
+    else:
+        base_sentence = sentence[:target_idx] + [sentence[target_idx]] + sentence[target_idx+1:]
+
+    base_sentence = " ".join(base_sentence)
+
+    all_pairs = []
+
+    for candidate in candidates:
+
+        candidate_pos = candidate.split(".")[1]
+
+        if config.pos_map[candidate_pos] != pos_tag:
+            continue
+        
+        definition = config.definitions[candidate]
+        gloss = f"{target_word} : {definition}"
+        input_ids, segments, target_mask, attention_mask = _get_ids(base_sentence, gloss, target_idx)
+
+        label = 1 if candidate == sense else 0
+
+        config.label_pairs_fine[instance_id] = candidate
+
+        # all_pairs.append((base_sentence, gloss, input_ids, segments, target_mask, target_word, candidate, label))
+        all_pairs.append((input_ids, segments, target_mask, attention_mask, label))
+
+    return all_pairs
+
+        
+
+
+def _get_ids(sentence, gloss, target_idx):
+    
+    sentence_tokens = tokenizer.tokenize(sentence)   
+    gloss_tokens = tokenizer.tokenize(gloss)
+
+    tokens = [config.CLS_TOKEN] + sentence_tokens + [config.SEP_TOKEN]
+    segments = [0] * len(tokens)
+    tokens += gloss_tokens + [config.SEP_TOKEN]
+    segments += [1] * (len(gloss_tokens) + 1)
+
+    map_to_ids = tokenizer(sentence).word_ids()
+    target_idx = map_to_ids[target_idx]
+    target_mask = [1 if idx == target_idx else 0 for idx in range(len(map_to_ids))]
+
+    attention_mask = [1] * len(tokens)
+
+    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+    return input_ids, segments, target_mask, attention_mask
 
 
 
 
-# def glossBERT_collate_fn(batch):
-#     words_batch, lemmas, pos_tags, candidates_batch, senses_batch = zip(*batch)
+def glossBERT_collate_fn(batch):
+    input_ids, segments, target_masks, attention_mask, labels = zip(*batch)
 
-#     input_sequences = []
-#     sense_ids = []
-#     attention_masks = []
-#     pos_tags = []
-#     lemmas = []
-#     labels = []
+    max_len = max([len(input_sequence) for input_sequence in input_ids])
 
-#     for i,words in enumerate(words_batch):
-#         # sentences = []
-#         candidates = candidates_batch[i]
-#         senses = senses_batch[i]
+    
+    # PADDING
+    input_ids = pad_sequence([torch.tensor(input_ids[i]) for i in range(len(input_ids))], batch_first=True, padding_value=0).to(config.DEVICE)
+    segments = pad_sequence([torch.tensor(segments[i]) for i in range(len(segments))], batch_first=True, padding_value=0).to(config.DEVICE)
+    target_masks = pad_sequence([torch.tensor(target_masks[i]) for i in range(len(target_masks))], batch_first=True, padding_value=0).to(config.DEVICE)
+    attention_mask = pad_sequence([torch.tensor(attention_mask[i]) for i in range(len(attention_mask))], batch_first=True, padding_value=0).to(config.DEVICE)
+    labels = torch.tensor(labels).to(config.DEVICE)
 
-#         for idx in candidates.keys():
-#             query_word = words[int(idx)]
-#             base_sentence = words[:int(idx)] + [config.DELIMITER_TOKEN + words[int(idx)] + config.DELIMITER_TOKEN] + words[int(idx)+1:] + [config.SEP_TOKEN] + [query_word + ":"]
-#             for candidate in candidates[idx]:
-#                 sense_ids.append(candidate)
-#                 definition = config.definitions[candidate]
-#                 # sentence = base_sentence +  " " + definition + " " + config.SEP_TOKEN
-#                 sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
+    return input_ids, segments, target_masks, attention_mask, labels
 
-#                 labels.append(1 if candidate == senses[idx][0] else 0)
-
-#                 input_sequences.append(sentence)
-#                 # attention_mask = [1 for _ in range(len(sentence))]
-#                 # attention_masks.append(attention_mask)
-
-                
-#     max_len = max([len(input_sequence) for input_sequence in input_sequences])
-#     encodings = [tokenizer(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in input_sequences]
-#     input_ids = [enc["input_ids"] for enc in encodings]
-#     attention_mask = [enc["attention_mask"] for enc in encodings]
-
-#     # pad everything
-#     input_ids = torch.tensor(input_ids)
-#     sense_ids = torch.tensor([config.sen_to_idx[sense_id] for sense_id in sense_ids])
-#     attention_masks = torch.tensor(attention_mask)
-
-#     labels = torch.tensor(labels)
-
-#     return input_ids, sense_ids, labels, attention_masks
 
