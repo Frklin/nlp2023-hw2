@@ -8,8 +8,8 @@
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 
-hw2/stud/__pycache__/*
-hw2/stud/lightning_logs/*
+__pycache__
+lightning_logs
 wandb
 data
 logs
