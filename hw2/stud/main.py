@@ -29,5 +29,7 @@ if __name__ == '__main__':
 
     model = GlossBERT()
 
-    trainer = Trainer(gpus=0, max_epochs=10, callbacks=[ModelCheckpoint(monitor='val_loss')])#, logger=wandb_logger)
+    wandb_logger = WandbLogger(name='glossBERT', project='glossBERT')
+    
+    trainer = Trainer(gpus=1, max_epochs=config.EPOCHS, callbacks=[ModelCheckpoint(monitor='val_loss')], logger=wandb_logger)
     trainer.fit(model, train_loader, val_loader)

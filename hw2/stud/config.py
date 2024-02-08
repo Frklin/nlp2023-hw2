@@ -32,19 +32,19 @@ SENSE_EMBEDDINGS_PATH = DATA_PATH + '/intermediate/sense_embeddings.npy'
 
 
 # PADDINGS
-PAD_TOKEN = "<PAD>"
-CLS_TOKEN = "<s>" # "[CLS]" #
-SEP_TOKEN = "</s>" # "[SEP]" #
 DELIMITER_TOKEN = "\""
 
 # MODEL
 BATCH_SIZE = 16
 WS = True
 MODE = "CLS"
+EPOCHS = 30
+LR = 1e-5
+WEIGHT_DECAY = 0.01
 
 
 
-SEED = 10
+SEED = 42
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

@@ -6,6 +6,8 @@ import random
 import numpy as np
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModel
+import torch.nn.functional as F
+
 
 
 #print special tokens
@@ -147,10 +149,11 @@ def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, i
 
     if ws:
         base_sentence = sentence[:target_idx] + ["\""] + [sentence[target_idx]] + ["\""] + sentence[target_idx+1:]
+        target_idx = target_idx + 1
     else:
         base_sentence = sentence[:target_idx] + [sentence[target_idx]] + sentence[target_idx+1:]
 
-    base_sentence = " ".join(base_sentence)
+    # base_sentence = " ".join(base_sentence)
 
     all_pairs = []
 
@@ -163,14 +166,13 @@ def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, i
         
         definition = config.definitions[candidate]
         gloss = f"{target_word} : {definition}"
-        input_ids, segments, target_mask, attention_mask = _get_ids(base_sentence, gloss, target_idx)
+        input_ids, token_type_ids, target_mask, attention_mask = _get_ids(base_sentence, gloss, target_idx)
 
         label = 1 if candidate == sense else 0
 
         config.label_pairs_fine[instance_id] = candidate
 
-        # all_pairs.append((base_sentence, gloss, input_ids, segments, target_mask, target_word, candidate, label))
-        all_pairs.append((input_ids, segments, target_mask, attention_mask, label, instance_id, candidate))
+        all_pairs.append((input_ids, token_type_ids, target_mask, attention_mask, label, instance_id, candidate))
 
     return all_pairs
 
@@ -179,65 +181,50 @@ def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, i
 
 def _get_ids(sentence, gloss, target_idx):
     
-    # input_ids = [config.tokenizer.cls_token_id]
-    # position_ids = [-1]
-    # shifted_target_idx = -1
+    input_ids = [config.tokenizer.cls_token_id]
+    position_ids = [-1]
+    shifted_target_idx = -1
 
-    # for i, token in enumerate(sentence):
-    #     if i == target_idx:
-    #         shifted_target_idx = len(input_ids)
-    #     encoded_token = config.tokenizer.encode(token, add_special_tokens=False)
-    #     input_ids.extend(encoded_token)
-    #     position_ids.extend([i] * len(encoded_token))
+    for i, token in enumerate(sentence):
+        if i == target_idx:
+            shifted_target_idx = len(input_ids)
+        encoded_token = config.tokenizer.encode(token, add_special_tokens=False)
+        input_ids.extend(encoded_token)
+        position_ids.extend([i] * len(encoded_token))
 
-    # input_ids.append(config.tokenizer.sep_token_id)
-    # position_ids.append(-1)
-    # token_type_ids = [0] * len(input_ids)
+    input_ids.append(config.tokenizer.sep_token_id)
+    position_ids.append(-1)
+    token_type_ids = [0] * len(input_ids)
 
-    # encoded_gloss = config.tokenizer.encode(gloss, add_special_tokens=False)
-    # input_ids.extend(encoded_gloss)
-    # position_ids.extend([-1] * len(encoded_gloss))
-    # token_type_ids.extend([1] * len(encoded_gloss))
-    # attention_mask = [1] * len(input_ids)
+    encoded_gloss = config.tokenizer.encode(gloss, add_special_tokens=False)
+    input_ids.extend(encoded_gloss)
+    position_ids.extend([-1] * len(encoded_gloss))
+    token_type_ids.extend([1] * len(encoded_gloss))
+    attention_mask = [1] * len(input_ids)
 
-    # target_mask = [0] * len(input_ids)
-    # target_mask[shifted_target_idx] = 1
+    target_mask = [0] * len(input_ids)
+    target_mask[shifted_target_idx] = 1
 
+    input_ids = torch.tensor(input_ids)
+    token_type_ids = torch.tensor(token_type_ids)
+    target_mask = torch.tensor(target_mask)
+    attention_mask = torch.tensor(attention_mask)
 
-    sentence_tokens = config.tokenizer.tokenize(sentence)   
-    gloss_tokens = config.tokenizer.tokenize(gloss)
-
-    tokens = [config.CLS_TOKEN] + sentence_tokens + [config.SEP_TOKEN]
-    segments = [0] * len(tokens)
-    tokens += gloss_tokens + [config.SEP_TOKEN]
-    segments += [1] * (len(gloss_tokens) + 1)
-
-    map_to_ids = config.tokenizer(sentence).word_ids()
-    target_idx = map_to_ids[target_idx]
-    target_mask = [1 if idx == target_idx else 0 for idx in range(len(map_to_ids))]
-
-    attention_mask = [1] * len(tokens)
-
-    input_ids = config.tokenizer.convert_tokens_to_ids(tokens)
-
-    return input_ids, segments, target_mask, attention_mask
+    return input_ids, token_type_ids, target_mask, attention_mask
 
 
 
 
 def glossBERT_collate_fn(batch):
-    input_ids, segments, target_masks, attention_mask, labels, instance_ids, candidates = zip(*batch)
-
+    instance_ids, input_ids, candidates, attention_masks, target_masks, token_type_ids, labels = zip(*batch) 
     max_len = max([len(input_sequence) for input_sequence in input_ids])
 
-    
-    # PADDING
-    input_ids = pad_sequence([torch.tensor(input_ids[i]) for i in range(len(input_ids))], batch_first=True, padding_value=0).to(config.DEVICE)
-    segments = pad_sequence([torch.tensor(segments[i]) for i in range(len(segments))], batch_first=True, padding_value=0).to(config.DEVICE)
-    target_masks = pad_sequence([torch.tensor(target_masks[i]) for i in range(len(target_masks))], batch_first=True, padding_value=0).to(config.DEVICE)
-    attention_mask = pad_sequence([torch.tensor(attention_mask[i]) for i in range(len(attention_mask))], batch_first=True, padding_value=0).to(config.DEVICE)
-    labels = torch.tensor(labels).to(config.DEVICE)
+    input_ids = torch.stack([F.pad(tensor, (0, max_len - tensor.shape[0])) for tensor in input_ids])
+    token_type_ids = torch.stack([F.pad(tensor, (0, max_len - tensor.shape[0])) for tensor in token_type_ids])
+    target_masks = torch.stack([F.pad(tensor, (0, max_len - tensor.shape[0])) for tensor in target_masks])
+    attention_masks = torch.stack([F.pad(tensor, (0, max_len - tensor.shape[0])) for tensor in attention_masks])
+    labels = torch.tensor(labels)
 
-    return input_ids, segments, target_masks, attention_mask, labels, instance_ids, candidates
+    return instance_ids, input_ids, candidates, attention_masks, target_masks, token_type_ids, labels
 
 

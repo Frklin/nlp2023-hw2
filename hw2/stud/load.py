@@ -124,10 +124,14 @@ class FineGrainedDataset(Dataset):
 
     def load_data(self, file_path):
         entries = []
+        i = 0
         with open(file_path, 'r') as f:
             row = json.load(f)
 
         for _, value in row.items():
+            i += 1
+            if i==300:
+                break
             instance_ids = value["instance_ids"]
             words = value["words"]
             lemmas = value["lemmas"]
@@ -143,10 +147,8 @@ class FineGrainedDataset(Dataset):
         return entries
     
     def __getitem__(self, index):
-        input_id, segment, target_mask, attention_mask, label, instance_id, candidates = self.data[index]
-        # words, gloss, input_ids, segments, target_mask, target_word, candidate, label = self.data[index]
-        # return words, gloss, input_ids, segments, target_mask, target_word, candidate, label
-        return input_id, segment, target_mask, attention_mask, label, instance_id, candidates
+        input_id, token_type_ids, target_mask, attention_mask, label, instance_id, candidates = self.data[index]
+        return instance_id, input_id, candidates, attention_mask, target_mask, token_type_ids, label 
     
     def __len__(self):
         return len(self.data)
