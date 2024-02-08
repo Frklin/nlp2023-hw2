@@ -5,14 +5,13 @@ import config
 import random
 import numpy as np
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoTokenizer, AutoModel, BertTokenizer
+from transformers import AutoTokenizer, AutoModel
 
-tokenizer = AutoTokenizer.from_pretrained('roberta-base', do_lower_case=True) # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
-bert = AutoModel.from_pretrained('roberta-base')
+
 #print special tokens
 #print(tokenizer.all_special_tokens)
 
-def seed_everything(seed = 42):
+def seed_everything(seed = 42): 
     random.seed(seed)
     # os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
@@ -97,7 +96,7 @@ def consec_collate_fn(batch):
 
     max_len = max([len(attention_masks[i]) for i in range(len(attention_masks))])
     # Tokenize the input sequences
-    input_ids = [tokenizer.encode(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in input_sequences]
+    input_ids = [config.tokenizer.encode(" ".join(input_sequence), truncation=True, padding='max_length', max_length=max_len) for input_sequence in input_sequences]
     # pad the attention masks with 0
 
     # Convert the input ids and labels to tensors
@@ -109,34 +108,34 @@ def consec_collate_fn(batch):
 
 
 
-def compute_definition_embeddigns():
-    batch_size = 100
-    sense_embeddings = []
+# def compute_definition_embeddigns():
+#     batch_size = 100
+#     sense_embeddings = []
 
-    # Loop over the senses in batches
-    for i in range(0, len(config.sen_to_idx), batch_size):
-        batch_senses = list(config.sen_to_idx.keys())[i:i+batch_size]
-        batch_definitions = [config.definitions[sense] for sense in batch_senses]
+#     # Loop over the senses in batches
+#     for i in range(0, len(config.sen_to_idx), batch_size):
+#         batch_senses = list(config.sen_to_idx.keys())[i:i+batch_size]
+#         batch_definitions = [config.definitions[sense] for sense in batch_senses]
 
-        # Tokenize the definitions and convert to tensors
-        inputs = tokenizer(batch_definitions, return_tensors='pt', padding=True, truncation=True, max_length=512)
-        # inputs = {name: tensor.to(config.DEVICE) for name, tensor in inputs.items()}
+#         # Tokenize the definitions and convert to tensors
+#         inputs = config.tokenizer(batch_definitions, return_tensors='pt', padding=True, truncation=True, max_length=512)
+#         # inputs = {name: tensor.to(config.DEVICE) for name, tensor in inputs.items()}
 
-        # Compute the BERT embeddings
-        with torch.no_grad():
-            outputs = bert(**inputs)
-        embeddings = outputs.last_hidden_state.mean(dim=1)
+#         # Compute the BERT embeddings
+#         with torch.no_grad():
+#             outputs = bert(**inputs)
+#         embeddings = outputs.last_hidden_state.mean(dim=1)
 
-        sense_embeddings.extend(embeddings.cpu().numpy())
+#         sense_embeddings.extend(embeddings.cpu().numpy())
 
-    sense_embeddings = np.array(sense_embeddings)
+#     sense_embeddings = np.array(sense_embeddings)
 
-    return sense_embeddings
+#     return sense_embeddings
 
-def sentence_embeddings(sen):
-    input_ids = tokenizer.encode(sen, return_tensors='pt')
-    outputs = bert(input_ids)
-    return outputs.last_hidden_state.mean(dim=1)
+# def sentence_embeddings(sen):
+#     input_ids = tokenizer.encode(sen, return_tensors='pt')
+#     outputs = bert(input_ids)
+#     return outputs.last_hidden_state.mean(dim=1)
 
 
 
@@ -171,7 +170,7 @@ def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, i
         config.label_pairs_fine[instance_id] = candidate
 
         # all_pairs.append((base_sentence, gloss, input_ids, segments, target_mask, target_word, candidate, label))
-        all_pairs.append((input_ids, segments, target_mask, attention_mask, label))
+        all_pairs.append((input_ids, segments, target_mask, attention_mask, label, instance_id, candidate))
 
     return all_pairs
 
@@ -180,29 +179,54 @@ def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, i
 
 def _get_ids(sentence, gloss, target_idx):
     
-    sentence_tokens = tokenizer.tokenize(sentence)   
-    gloss_tokens = tokenizer.tokenize(gloss)
+    # input_ids = [config.tokenizer.cls_token_id]
+    # position_ids = [-1]
+    # shifted_target_idx = -1
+
+    # for i, token in enumerate(sentence):
+    #     if i == target_idx:
+    #         shifted_target_idx = len(input_ids)
+    #     encoded_token = config.tokenizer.encode(token, add_special_tokens=False)
+    #     input_ids.extend(encoded_token)
+    #     position_ids.extend([i] * len(encoded_token))
+
+    # input_ids.append(config.tokenizer.sep_token_id)
+    # position_ids.append(-1)
+    # token_type_ids = [0] * len(input_ids)
+
+    # encoded_gloss = config.tokenizer.encode(gloss, add_special_tokens=False)
+    # input_ids.extend(encoded_gloss)
+    # position_ids.extend([-1] * len(encoded_gloss))
+    # token_type_ids.extend([1] * len(encoded_gloss))
+    # attention_mask = [1] * len(input_ids)
+
+    # target_mask = [0] * len(input_ids)
+    # target_mask[shifted_target_idx] = 1
+
+
+    sentence_tokens = config.tokenizer.tokenize(sentence)   
+    gloss_tokens = config.tokenizer.tokenize(gloss)
 
     tokens = [config.CLS_TOKEN] + sentence_tokens + [config.SEP_TOKEN]
     segments = [0] * len(tokens)
     tokens += gloss_tokens + [config.SEP_TOKEN]
     segments += [1] * (len(gloss_tokens) + 1)
 
-    map_to_ids = tokenizer(sentence).word_ids()
+    map_to_ids = config.tokenizer(sentence).word_ids()
     target_idx = map_to_ids[target_idx]
     target_mask = [1 if idx == target_idx else 0 for idx in range(len(map_to_ids))]
 
     attention_mask = [1] * len(tokens)
 
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    input_ids = config.tokenizer.convert_tokens_to_ids(tokens)
 
-    return input_ids, segments, target_mask, attention_mask
+    return input_ids, token_type_ids, target_mask, attention_mask
 
 
 
 
 def glossBERT_collate_fn(batch):
-    input_ids, segments, target_masks, attention_mask, labels = zip(*batch)
+    input_ids, segments, target_masks, attention_mask, labels, instance_ids, candidates = zip(*batch)
 
     max_len = max([len(input_sequence) for input_sequence in input_ids])
 
@@ -214,6 +238,6 @@ def glossBERT_collate_fn(batch):
     attention_mask = pad_sequence([torch.tensor(attention_mask[i]) for i in range(len(attention_mask))], batch_first=True, padding_value=0).to(config.DEVICE)
     labels = torch.tensor(labels).to(config.DEVICE)
 
-    return input_ids, segments, target_masks, attention_mask, labels
+    return input_ids, segments, target_masks, attention_mask, labels, instance_ids, candidates
 
 

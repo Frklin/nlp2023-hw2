@@ -7,9 +7,7 @@ import json
 import config
 import os
 from utils import generate_glossBERT_pairs
-from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained('roberta-base') # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
 class CoarseGrainedDataset(Dataset):
     def __init__(self, file_path):
         self.data = self.load_data(file_path)
@@ -145,10 +143,10 @@ class FineGrainedDataset(Dataset):
         return entries
     
     def __getitem__(self, index):
-        input_id, segment, target_mask, attention_mask, label = self.data[index]
+        input_id, segment, target_mask, attention_mask, label, instance_id, candidates = self.data[index]
         # words, gloss, input_ids, segments, target_mask, target_word, candidate, label = self.data[index]
         # return words, gloss, input_ids, segments, target_mask, target_word, candidate, label
-        return input_id, segment, target_mask, attention_mask, label
+        return input_id, segment, target_mask, attention_mask, label, instance_id, candidates
     
     def __len__(self):
         return len(self.data)

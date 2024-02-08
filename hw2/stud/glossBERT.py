@@ -14,16 +14,16 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 class GlossBERT(pl.LightningModule):
-    def __init__(self, pretrained_model_name='roberta-base'):
+    def __init__(self, pretrained_model_name=config.MODEL_NAME):
         super(GlossBERT, self).__init__()
         
         # Initialize the BERT model and tokenizer
         self.roberta = RobertaForSequenceClassification.from_pretrained("roberta-base", type_vocab_size=2, ignore_mismatched_sizes=True)
         # model = RobertaForSequenceClassification.from_pretrained("roberta-base", config=config)
-        self.bert = AutoModel.from_pretrained(pretrained_model_name, config=config)
+        self.bert = AutoModel.from_pretrained(pretrained_model_name, config=config)  # config
 
-        for param in self.bert.parameters():
-            param.requires_grad = True
+        # for param in self.bert.parameters():
+        #     param.requires_grad = True
 
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
 
@@ -36,66 +36,65 @@ class GlossBERT(pl.LightningModule):
         # Define the classifier
         self.relu = nn.ReLU()
         self.classifier = nn.Linear(self.bert.config.hidden_size, 2) #config.num_classes_fine)  # num_classes should be defined
+        self.dropout = nn.Dropout(0.1)
 
         #loss
         self.loss = nn.CrossEntropyLoss() #ignore_index=0
         
-    def forward(self, input_ids, attention_mask, indices, token_type_ids):
+    def forward(self, input_ids, attention_mask, token_type_ids, target):
         # Get BERT embeddings
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        out = self.bert(input_ids=input_ids,
+                        token_type_ids=token_type_ids,
+                        attention_mask=attention_mask)
         
-        #cls output
-        cls_output = outputs.last_hidden_state[:, 0, :]
-
-        # do a mean of the embeddings
-        sentence_embeddings = outputs.last_hidden_state.mean(dim=1)
-
-        # take the embeddings of the ambiguous word
         target_embeddings = []
+        embeddings = out.last_hidden_state
 
-        # Loop over the batch
-        for i, sentence_indices in enumerate(indices):
-            # Extract the embeddings corresponding to the target words in the sentence
-            embeddings = outputs.last_hidden_state[i, sentence_indices, :]
-            
-            # Average the embeddings along dimension 0 (since sentence_indices is a list of indices)
-            target_embedding = torch.mean(embeddings, dim=0)
-            
-            # Append the averaged embedding to the list
-            target_embeddings.append(target_embedding)
+        # TARGET WORD CASE 
+        if config.MODE == "TARGET":
 
-        # Convert the list of averaged embeddings to a tensor
-        target_embeddings = torch.stack(target_embeddings)
+            target_embeddings = embeddings[:, target, :]  # take just target == 1 
 
-        # Prediction
-        logits = self.classifier(target_embeddings)  # cls_output
+            if len(target) >= 2:
+                target_embeddings = target_embeddings.mean(dim=1)
+
+        elif config.MODE == "CLS":
+            target_embeddings = embeddings[:, 0, :]
+        
+        else:
+            raise ValueError("MODE not valid")
+        
+        target_embeddings = self.dropout(target_embeddings)
+
+        logits = self.classifier(target_embeddings)
+
         return logits
 
     def training_step(self, batch, batch_idx):
         # input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
 
         # for each input ids find the first occurence of the delimiter token
-        input_ids, token_type_ids, target, attention_mask, labels,  = batch
-        out = self.roberta(input_ids, attention_mask, labels=None, token_type_ids=token_type_ids)
+        input_ids, token_type_ids, target, attention_mask, labels, instance_ids, candidates = batch
+        # out = self.roberta(input_ids, attention_mask, labels=None, token_type_ids=token_type_ids)
             
-        logits = out.logits
+        logits = self.forward(input_ids=input_ids,
+                        token_type_ids=token_type_ids,
+                        attention_mask=attention_mask,
+                        target=target)
+        
         loss = self.loss(logits.view(-1, logits.size(-1)), labels.view(-1))
 
+        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+        self.log('train_loss', loss, prog_bar=True)
+        self.log('train_acc', accuracy,  prog_bar=True)
 
-        # # logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
-        # logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
-        # loss = self.loss(logits, labels)   
-        # accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-        # self.log('train_loss', loss, prog_bar=True)
-        # self.log('train_acc', accuracy,  prog_bar=True)
+        self.accuracy_train.append(accuracy)
 
-        # self.accuracy_train.append(accuracy)
-
-        # for i, id in enumerate(instance_id):
-        #     if id not in self.train_predictions.keys():
-        #         self.train_predictions[id] = []
-        #     self.train_predictions[id].append((candidates[i], float(logits[i, 1])))
-        # # self.write_prediction(instance_id, candidates, logits[:, 1])
+        for i, id in enumerate(instance_ids):
+            if id not in self.train_predictions.keys():
+                self.train_predictions[id] = []
+            self.train_predictions[id].append((candidates[i], float(logits[i, 1])))
+        # self.write_prediction(instance_id, candidates, logits[:, 1])
 
         return {'loss': loss}
     
@@ -104,36 +103,28 @@ class GlossBERT(pl.LightningModule):
         with torch.no_grad():
             # input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
             # input_ids, token_type_ids, target, attention_mask, labels = batch
-            input_ids, token_type_ids, target, attention_mask, labels,  = batch
-            out = self.roberta(input_ids, attention_mask, labels=None, token_type_ids=token_type_ids)
+            input_ids, token_type_ids, target, attention_mask, labels, instance_ids, candidates = batch
+
+            logits = self.forward(input_ids=input_ids,
+                        token_type_ids=token_type_ids,
+                        attention_mask=attention_mask,
+                        target=target)
             
-            logits = out.logits
             loss = self.loss(logits.view(-1, logits.size(-1)), labels.view(-1))
 
-            
-            
-            
-            
-            
-            # logits = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
-            # # take the first to elemnt of the batch
-        
-            # # logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
-            # # logits = self.roberta(input_ids, attention_mask, labels=None, target_mask=indices)
-            # loss = self.loss(logits, labels)
-            # accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-            # self.log('val_loss', loss, prog_bar=True)
-            # self.log('val_acc', accuracy, prog_bar=True)
-            # self.accuracy_val.append(accuracy)
+            accuracy = (logits.argmax(dim=-1) == labels).float().mean()
 
-            # # if instance_id is present in the predictions, append the new predictions
-            # # else create a new entry
-            # for i, id in enumerate(instance_id):
-            #     if id not in self.val_predictions.keys():
-            #         self.val_predictions[id] = []
-            #     self.val_predictions[id].append((candidates[i], float(logits[i, 1])))
-            #     # self.write_prediction(id, candidates[i], logits[i, 1])
-            # # self.write_prediction(instance_id, candidates, logits[:, 1])
+            self.log('val_loss', loss, prog_bar=True)
+            self.log('val_acc', accuracy, prog_bar=True)
+            self.accuracy_val.append(accuracy)
+
+            # LOAD THE RESULTS 
+            for i, id in enumerate(instance_ids):
+                if id not in self.val_predictions.keys():
+                    self.val_predictions[id] = []
+                self.val_predictions[id].append((candidates[i], float(logits[i, 1])))
+                # self.write_prediction(id, candidates[i], logits[i, 1])
+            # self.write_prediction(instance_id, candidates, logits[:, 1])
 
         return {'loss': loss}
     
