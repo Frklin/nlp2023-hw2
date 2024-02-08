@@ -220,7 +220,7 @@ def _get_ids(sentence, gloss, target_idx):
 
     input_ids = config.tokenizer.convert_tokens_to_ids(tokens)
 
-    return input_ids, token_type_ids, target_mask, attention_mask
+    return input_ids, segments, target_mask, attention_mask
 
 
 
