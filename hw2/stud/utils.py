@@ -170,7 +170,8 @@ def generate_glossBERT_pairs(sentence, candidates, target_idx, sense, pos_tag, i
 
         label = 1 if candidate == sense else 0
 
-        config.label_pairs_fine[instance_id] = candidate
+        if label == 1:
+            config.single_label_pairs_fine[instance_id] = config.fine_to_coarse[candidate]
 
         all_pairs.append((input_ids, token_type_ids, target_mask, attention_mask, label, instance_id, candidate))
 

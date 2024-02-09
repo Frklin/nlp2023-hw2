@@ -31,61 +31,7 @@ class CoarseGrainedDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-# class FineGrainedDataset(Dataset):
-#     def __init__(self, file_path):
-#         self.data = self.load_data(file_path)
-        
-#     def load_data(self, file_path):
-#         entries = []
-#         with open(file_path, 'r') as f:
-#             row = json.load(f)
-#             i = 0
-#             # create an entry for each candidate
-#             for _, value in row.items():
-#                 i += 1
-#                 if i==10:
-#                     break
-#                 instance_ids = value["instance_ids"]
-#                 base_words = value["words"]
-#                 lemmas = value["lemmas"]
-#                 pos_tags = value["pos_tags"]
-#                 candidates = value["candidates"]
-#                 senses = value["senses"]
-#                 for idx in candidates.keys():
-#                     pos = pos_tags[int(idx)]
-#                     base_sentence = [config.CLS_TOKEN] + base_words[:int(idx)] + [base_words[int(idx)]] + base_words[int(idx)+1:] + [config.SEP_TOKEN] + [base_words[int(idx)] + " : "]
-#                     # for candidate in candidates[idx]:
-#                     # sentence_tokens = tokenizer(" ".join(base_sentence))
-#                     for candidate in candidates[idx]:
-#                         #check the pos
-#                         candidate_pos = candidate.split(".")[1]
-#                         if config.pos_map[candidate_pos] != pos:
-#                             print(pos, candidate_pos)
-#                             continue
-#                         label = 1 if candidate == senses[idx][0] else 0
-#                         definition = config.definitions[candidate]
-#                         # gloss_tokens = tokenizer(definition)
-#                         config.label_pairs_fine[instance_ids[idx]] = candidate
-#                         # config.predictions[instance_ids[idx]] = []
-#                         # tokens = [config.CLS_TOKEN] + sentence_tokens["input_ids"] + [config.SEP_TOKEN]
-#                         # segments = [0] * len(tokens)
-                        
-#                         # tokens += gloss_tokens["input_ids"] + [config.SEP_TOKEN]
-#                         # segments += [1] * (len(gloss_tokens["input_ids"]) + 1)
 
-#                         # print(tokens)
-#                         # input_ids = tokenizer.convert_tokens_to_ids(tokens)
-#                         sentence = base_sentence +  definition.split() + [config.SEP_TOKEN]
-#                         entries.append((sentence, lemmas, pos_tags, candidate, label, int(idx)+1, instance_ids[idx], len(base_sentence)-1))
-#         return entries
-
-#     def __getitem__(self, index):
-#         words, lemmas, pos_tags, candidate, label, idx, instance_id, eos_idx = self.data[index]
-#         return words, lemmas, pos_tags, candidate, label, idx, instance_id, eos_idx
-    
-#     def __len__(self):
-#         return len(self.data)
-    
 
 def load_map(file_path):
     # print current working directory
@@ -98,13 +44,14 @@ def load_map(file_path):
 def load_fine_definitions(file_path):
     mapping = load_map(file_path)
     fine_definitions = {}
-    coarse_to_grain = {}
+    coarse_to_fine = {}
     for coarse, fine_list in mapping.items():
+        coarse_to_fine[coarse] = []
         for fine_tuple in fine_list:
             (fine, definition) = list(fine_tuple.items())[0]
             fine_definitions[fine] = definition
-            coarse_to_grain[coarse] = fine
-    return fine_definitions, coarse_to_grain
+            coarse_to_fine[coarse].append(fine)
+    return fine_definitions, coarse_to_fine
 
 def load_definitions(candidates, mapping=None):
     if mapping is None:
@@ -128,9 +75,9 @@ class FineGrainedDataset(Dataset):
         with open(file_path, 'r') as f:
             row = json.load(f)
 
-        for _, value in row.items():
+        for idx, value in row.items():
             i += 1
-            if i==300:
+            if i==10:
                 break
             instance_ids = value["instance_ids"]
             words = value["words"]
@@ -138,6 +85,8 @@ class FineGrainedDataset(Dataset):
             pos_tags = value["pos_tags"]
             candidates = value["candidates"]
             senses = value["senses"]
+
+            set_sense_labels(idx,instance_ids, senses)
 
             for idx in candidates.keys():
                 pos_tag = pos_tags[int(idx)]
@@ -157,6 +106,10 @@ class FineGrainedDataset(Dataset):
 
 
 
+def set_sense_labels(idx, instance_ids, senses):
+    config.label_pairs_fine[idx] = {}
+    for i, instance_id in instance_ids.items():
+        config.label_pairs_fine[idx][instance_id] = config.fine_to_coarse[senses[i][0]]
 
 
 # if __name__ == "__main__":

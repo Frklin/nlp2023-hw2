@@ -151,7 +151,7 @@ class GlossBERT(pl.LightningModule):
 
         for instance_id, pred in self.train_predictions.items():
                 pred.sort(key=lambda x: x[1], reverse=True)
-                self.final_train_predictions[instance_id] = pred[0][0]
+                self.final_train_predictions[instance_id] = config.fine_to_coarse[pred[0][0]]
 
         self.print_train_metrics()
 
@@ -170,7 +170,7 @@ class GlossBERT(pl.LightningModule):
 
         for instance_id, pred in self.val_predictions.items():
                 pred.sort(key=lambda x: x[1], reverse=True)
-                self.final_val_predictions[instance_id] = pred[0][0]
+                self.final_val_predictions[instance_id] = config.fine_to_coarse[pred[0][0]]
 
         self.print_val_metrics()
 
@@ -196,7 +196,7 @@ class GlossBERT(pl.LightningModule):
         correct = 0
         total = 0
         for instance_id, pred in self.final_train_predictions.items():
-            if pred == config.label_pairs_fine[instance_id]:
+            if pred == config.single_label_pairs_fine[instance_id]:
                 correct += 1
             total += 1
         train_accuracy = round(correct/total, 3) if total > 0 else 0
@@ -207,7 +207,7 @@ class GlossBERT(pl.LightningModule):
         correct = 0
         total = 0
         for instance_id, pred in self.final_val_predictions.items():
-            if pred == config.label_pairs_fine[instance_id]:
+            if pred == config.single_label_pairs_fine[instance_id]:
                 correct += 1
             total += 1
         val_accuracy = round(correct/total, 3) if total > 0 else 0
