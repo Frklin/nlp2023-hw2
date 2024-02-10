@@ -54,15 +54,12 @@ class GlossBERT(pl.LightningModule):
                         attention_mask=attention_mask)
         
         target_embeddings = []
-        embeddings = out.last_hidden_state
+        embeddings = out.last_hidden_state        
 
-        # TARGET WORD CASE 
         if config.MODE == "TARGET":
 
-            target_embeddings = embeddings[:, target, :]  # take just target == 1 
+            target_embeddings = embeddings[target]   
 
-            if len(target) >= 2:
-                target_embeddings = target_embeddings.mean(dim=1)
 
         elif config.MODE == "CLS":
             target_embeddings = embeddings[:, 0, :]

@@ -208,7 +208,7 @@ def _get_ids(sentence, gloss, target_idx):
 
     input_ids = torch.tensor(input_ids)
     token_type_ids = torch.tensor(token_type_ids)
-    target_mask = torch.tensor(target_mask)
+    target_mask = torch.tensor(target_mask).to(torch.bool)
     attention_mask = torch.tensor(attention_mask)
 
     return input_ids, token_type_ids, target_mask, attention_mask
