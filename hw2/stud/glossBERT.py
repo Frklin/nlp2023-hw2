@@ -124,13 +124,12 @@ class GlossBERT(pl.LightningModule):
 
         return {'loss': loss}
     
-    def predict(self, input_data):
-
-        instance_ids, input_ids, candidates, attention_masks, token_type_ids = input_data
+    def predict(self, instance_ids, input_ids, candidates, attention_masks, token_type_ids, target_mask=None):
 
         logits = self.forward(input_ids=input_ids,
                     token_type_ids=token_type_ids,
-                    attention_mask=attention_masks)
+                    attention_mask=attention_masks,
+                    target=target_mask)
         
         all_predictions = {}
         predictions = {}
