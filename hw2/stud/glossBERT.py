@@ -18,8 +18,6 @@ class GlossBERT(pl.LightningModule):
         super(GlossBERT, self).__init__()
         
         # Initialize the BERT model and tokenizer
-        self.roberta = RobertaForSequenceClassification.from_pretrained("roberta-base", type_vocab_size=2, ignore_mismatched_sizes=True)
-        # model = RobertaForSequenceClassification.from_pretrained("roberta-base", config=config)
         self.bert = AutoModel.from_pretrained(pretrained_model_name, config=config)  # config
 
         # for param in self.bert.parameters():
@@ -47,7 +45,7 @@ class GlossBERT(pl.LightningModule):
         self.loss = nn.CrossEntropyLoss() #ignore_index=0
         # self.loss = nn.BCELoss()
         
-    def forward(self, input_ids, attention_mask, token_type_ids, target):
+    def forward(self, input_ids, attention_mask, token_type_ids, target=None):
 
         out = self.bert(input_ids=input_ids,
                         token_type_ids=token_type_ids,
@@ -126,15 +124,29 @@ class GlossBERT(pl.LightningModule):
 
         return {'loss': loss}
     
-    def predict(self, sentence, attention_mask, indices):
-        # take in input the tokens and the glosses
+    def predict(self, input_data):
 
-        # create the different possibilities
+        instance_ids, input_ids, candidates, attention_masks, token_type_ids = input_data
 
-        # get the logits for each possibility
+        logits = self.forward(input_ids=input_ids,
+                    token_type_ids=token_type_ids,
+                    attention_mask=attention_masks)
+        
+        all_predictions = {}
+        predictions = {}
 
-        # return the best one
-        pass
+
+        for i, sentence_id in enumerate(instance_ids):
+            if sentence_id not in all_predictions.keys():
+                all_predictions[sentence_id] = []
+            all_predictions[sentence_id].append((candidates[i], float(logits[i, 1])))
+
+        for instance_id, pred in all_predictions.items():
+            pred.sort(key=lambda x: x[1], reverse=True)
+            predictions[instance_id] = config.fine_to_coarse[pred[0][0]]
+        
+        return predictions
+
 
     
     def on_train_epoch_end(self):
@@ -180,7 +192,6 @@ class GlossBERT(pl.LightningModule):
 
     def write_prediction(self, instance_id, prediction, value, label, step):
         with open(config.PREDICTION_PATH, 'a') as f:
-            # for i in range(len(prediction)):
                 f.write('(' +step+') '+str(instance_id) + ', ' + str(prediction) + ',  ' + str(value.item())[:5] + f", ({label})\n")
 
 
