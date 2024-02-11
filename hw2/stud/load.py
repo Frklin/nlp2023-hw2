@@ -76,9 +76,9 @@ class FineGrainedDataset(Dataset):
             row = json.load(f)
 
         for idx, value in row.items():
-            i += 1
-            if i==10:
-                break
+            # i += 1
+            # if i==10:
+            #     break
             instance_ids = value["instance_ids"]
             words = value["words"]
             lemmas = value["lemmas"]

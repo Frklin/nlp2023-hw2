@@ -31,5 +31,5 @@ if __name__ == '__main__':
 
     wandb_logger = WandbLogger(name='glossBERT', project='glossBERT')
     
-    trainer = Trainer(gpus=1, max_epochs=config.EPOCHS, callbacks=[ModelCheckpoint(monitor='val_loss')], logger=wandb_logger)
+    trainer = Trainer(max_epochs=config.EPOCHS, callbacks=[ModelCheckpoint(monitor='val_loss')], logger=wandb_logger)
     trainer.fit(model, train_loader, val_loader)

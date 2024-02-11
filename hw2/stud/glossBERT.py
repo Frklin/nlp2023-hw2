@@ -65,7 +65,8 @@ class GlossBERT(pl.LightningModule):
         else:
             raise ValueError("MODE not valid")
         
-        # target_embeddings = self.dropout(target_embeddings)
+        if config.DROPOUT:        
+            target_embeddings = self.dropout(target_embeddings)
 
         logits = self.classifier(target_embeddings)
 

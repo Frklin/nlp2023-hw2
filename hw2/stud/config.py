@@ -4,10 +4,10 @@ sys.path.append("./")
 from load import load_fine_definitions
 from transformers import AutoTokenizer, AutoModel
 
-MODEL_NAME = "bert-base-uncased" # "roberta-base"
+MODEL_NAME = "bert-base-cased" # "roberta-base"
 
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, do_lower_case=True) # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, do_lower_case=False) # SEP TOKEN AND CLS , cls_token=config.CLS_TOKEN
 bert = AutoModel.from_pretrained(MODEL_NAME)
 
 # PATHS
@@ -37,7 +37,8 @@ DELIMITER_TOKEN = "\""
 # MODEL
 BATCH_SIZE = 16
 WS = True
-MODE = "CLS"
+MODE = "TARGET"
+DROPOUT = True
 EPOCHS = 30
 LR = 1e-5
 WEIGHT_DECAY = 0.01
