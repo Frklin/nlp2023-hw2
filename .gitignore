@@ -13,3 +13,4 @@ lightning_logs
 wandb
 data
 logs
+model
