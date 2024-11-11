@@ -1,299 +1,282 @@
-
-
+import config
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
-# from pytorch_lightning import LightningModule
-from transformers import BertModel, BertTokenizer, AutoTokenizer, AutoModel, RobertaForTokenClassification, BertForTokenClassification
-import config
+from transformers import  AutoTokenizer, AutoModel
+from metrics import compute_metrics
+import wandb
 
 
-import torch
-import torch.nn as nn
-import pytorch_lightning as pl
 
 class GlossBERT(pl.LightningModule):
-    def __init__(self, pretrained_model_name='roberta-base'):
+    """
+    GlossBERT model for word sense disambiguation. 
+    GlossBERT enhances the traditional BERT model by incorporating gloss information directly into the training process. 
+    This is achieved by fine-tuning a pre-trained BERT model on data using sentence-gloss pairs, thus enabling the model
+    to learn the distinctions of word senses in varied contexts.
+    """
+
+    def __init__(self, pretrained_model_name: str = config.MODEL_NAME):
+        """
+        Initialization of the GlossBERT model.
+        Args:
+            pretrained_model_name (str): Name of the pre-trained model to use (bert-base-cased).
+        """
         super(GlossBERT, self).__init__()
         
-        # Initialize the BERT model and tokenizer
-        self.roberta = RobertaForTokenClassification.from_pretrained(pretrained_model_name, num_labels=2)
-        self.bert = AutoModel.from_pretrained(pretrained_model_name)
-        for param in self.bert.parameters():
-            param.requires_grad = True
+        # BERT model
+        self.bert = AutoModel.from_pretrained(pretrained_model_name, config=config)  
+        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name) # For fast debugging
 
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
-
-        self.accuracy_train = []
-        self.accuracy_val = []
-
-        self.train_predictions = {}
-        self.val_predictions = {}
-
-        # Define the classifier
+        # Classifier
         self.relu = nn.ReLU()
-        self.classifier = nn.Linear(self.bert.config.hidden_size, 2) #config.num_classes_fine)  # num_classes should be defined
+        self.classifier = nn.Linear(self.bert.config.hidden_size, config.NUM_CLASSES) 
+        self.dropout = nn.Dropout(config.DROPOUT)
 
-        #loss
-        self.loss = nn.CrossEntropyLoss() #ignore_index=0
+        # Loss function
+        self.loss = nn.CrossEntropyLoss() 
+
+        # Train Metrics
+        self.train_losses: list = []
+        self.accuracy_train: list = []
+        self.train_predictions: set = {}      # {instance_id: [(candidate, confidence)]}
+        self.final_train_predictions = {}     # {instance_id: prediction}
+
+        # Validation Metrics
+        self.val_losses: list = []
+        self.accuracy_val: list = []
+        self.val_predictions: set = {}        # {instance_id: [(candidate, confidence)]}
+        self.final_val_predictions: set = {}  # {instance_id: prediction}
         
-    def forward(self, input_ids, attention_mask, indices, token_type_ids):
-        # Get BERT embeddings
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+    def forward(self, input_ids: torch.Tensor, token_type_ids: torch.Tensor, attention_mask: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the model.
+        Args:
+            input_ids (torch.Tensor): Input token ids.                  [B, max_len]
+            token_type_ids (torch.Tensor): Segment token ids.           [B, max_len]
+            attention_mask (torch.Tensor): Attention mask.              [B, max_len]
+            target (torch.Tensor) : Target mask.                        [B, max_len]
+        Returns:
+            torch.Tensor [B,2]: Output logits of glossBERT.
+        """
+
+        # BERT forward pass
+        out = self.bert(input_ids=input_ids,
+                        token_type_ids=token_type_ids,
+                        attention_mask=attention_mask)
         
-        #cls output
-        cls_output = outputs.last_hidden_state[:, 0, :]
-
-        # do a mean of the embeddings
-        sentence_embeddings = outputs.last_hidden_state.mean(dim=1)
-
-        # take the embeddings of the ambiguous word
         target_embeddings = []
+        embeddings = out.last_hidden_state       # [B, max_len, hidden_size]
 
-        # Loop over the batch
-        for i, sentence_indices in enumerate(indices):
-            # Extract the embeddings corresponding to the target words in the sentence
-            embeddings = outputs.last_hidden_state[i, sentence_indices, :]
-            
-            # Average the embeddings along dimension 0 (since sentence_indices is a list of indices)
-            target_embedding = torch.mean(embeddings, dim=0)
-            
-            # Append the averaged embedding to the list
-            target_embeddings.append(target_embedding)
+        # Select the target word embeddings
+        if config.MODE == "TARGET":
+            target_embeddings = embeddings[target]   # [B, hidden_size]
 
-        # Convert the list of averaged embeddings to a tensor
-        target_embeddings = torch.stack(target_embeddings)
+        # Select the CLS token embeddings
+        elif config.MODE == "CLS":
+            target_embeddings = embeddings[:, 0, :]  # [B, hidden_size]
+        
+        else:
+            raise ValueError("MODE not valid")
+        
+        # Apply dropout
+        target_embeddings = self.dropout(target_embeddings)
 
-        # Prediction
-        logits = self.classifier(target_embeddings)  # cls_output
+        # Apply classifier
+        logits = self.classifier(target_embeddings)
+
         return logits
 
-    def training_step(self, batch, batch_idx):
-        input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
+    def training_step(self, batch: torch.Tensor, batch_idx: int) -> dict:
+        """
+        Training step of the model.
+        Args:
+            batch (torch.Tensor): Input batch. [B, max_len]
+            batch_idx (int): Batch index.
+        Returns:
+            dict: Dictionary with the loss.
+        """
 
-        # for each input ids find the first occurence of the delimiter token
-
-
-        # logits = self.roberta(input_ids, attention_mask, labels=labels, target_mask=indices)
-        logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
-        loss = self.loss(logits, labels)   
-        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-        self.log('train_loss', loss, prog_bar=True)
-        self.log('train_acc', accuracy,  prog_bar=True)
-
-        self.accuracy_train.append(accuracy)
-
-        for i, id in enumerate(instance_id):
-            if id not in self.train_predictions.keys():
-                self.train_predictions[id] = []
-            self.train_predictions[id].append((candidates[i], float(logits[i, 1])))
-        # self.write_prediction(instance_id, candidates, logits[:, 1])
-
-        return {'loss': loss}
-    
-
-    def validation_step(self, batch, batch_idx):
-        with torch.no_grad():
-            input_ids, labels, attention_mask, indices, candidates, instance_id, token_type_ids = batch
+        instance_ids, input_ids, candidates, attention_masks, target_masks, token_type_ids, labels = batch
             
-            logits = self.forward(input_ids, attention_mask, indices, token_type_ids)
-            # logits = self.roberta(input_ids, attention_mask, labels=None, target_mask=indices)
-            loss = self.loss(logits, labels)
-            accuracy = (logits.argmax(dim=-1) == labels).float().mean()
-            self.log('val_loss', loss, prog_bar=True)
-            self.log('val_acc', accuracy, prog_bar=True)
-            self.accuracy_val.append(accuracy)
+        # Forward pass
+        logits = self.forward(input_ids=input_ids,
+                        token_type_ids=token_type_ids,
+                        attention_mask=attention_masks,
+                        target=target_masks)
+        
+        # Compute loss
+        loss = self.loss(logits, labels)
 
-            # if instance_id is present in the predictions, append the new predictions
-            # else create a new entry
-            for i, id in enumerate(instance_id):
-                if id not in self.val_predictions.keys():
-                    self.val_predictions[id] = []
-                self.val_predictions[id].append((candidates[i], float(logits[i, 1])))
-                # self.write_prediction(id, candidates[i], logits[i, 1])
-            # self.write_prediction(instance_id, candidates, logits[:, 1])
+        # Compute accuracy
+        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+
+        # Log metrics
+        self.log('train_loss', loss, prog_bar=True)
+        self.log('train_acc_batch', accuracy,  prog_bar=True)
+        self.accuracy_train.append(accuracy)
+        self.train_losses.append(loss)
+
+        # Load the results for the predictions in the training set
+        for i, sentence_id in enumerate(instance_ids):
+            if sentence_id not in self.train_predictions.keys():
+                self.train_predictions[sentence_id] = []
+            self.train_predictions[sentence_id].append((candidates[i], float(logits[i, 1])))
+            
+            if config.DEBUG:
+                self.write_prediction(sentence_id, candidates[i], logits[i, 1], labels[i] , "TRAIN")
 
         return {'loss': loss}
     
-    def predict(self, sentence, attention_mask, indices):
-        # take in input the tokens and the glosses
+    def validation_step(self, batch: torch.Tensor, batch_idx: int) -> dict:
+        """
+        Validation step of the model.
+        Args:
+            batch (torch.Tensor): Input batch. [B, max_len]
+            batch_idx (int): Batch index.
+        Returns:
+            dict: Dictionary with the loss.
+        """
 
-        # create the different possibilities
+        instance_ids, input_ids, candidates, attention_masks, target_masks, token_type_ids, labels = batch
 
-        # get the logits for each possibility
+        # Forward pass
+        logits = self.forward(input_ids=input_ids,
+                    token_type_ids=token_type_ids,
+                    attention_mask=attention_masks,
+                    target=target_masks)
+        
+        # Compute loss
+        loss = self.loss(logits, labels)
 
-        # return the best one
-        pass
+        # Compute accuracy
+        accuracy = (logits.argmax(dim=-1) == labels).float().mean()
+
+        # Log metrics
+        self.log('val_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log('val_acc_batch', accuracy, prog_bar=True)
+        self.accuracy_val.append(accuracy)
+        self.val_losses.append(loss)
+
+        # Load the results for the predictions in the validation set 
+        for i, sentence_id in enumerate(instance_ids):
+            if sentence_id not in self.val_predictions.keys():
+                self.val_predictions[sentence_id] = []
+            self.val_predictions[sentence_id].append((candidates[i], float(logits[i, 1])))
+
+            if config.DEBUG:
+                self.write_prediction(sentence_id, candidates[i], logits[i, 1], labels[i], "VAL")
+
+        return {'loss': loss}
+    
+    def on_train_epoch_end(self):
+        """
+        Method called at the end of the training epoch.
+
+        It collects the predictions for the training set and computes the metrics.
+
+        The metrics are logged to wandb.
+        """
+
+        # Compute the mean loss and accuracy
+        loss = sum(self.train_losses) / len(self.train_losses)
+        accuracy_train_mean = sum(self.accuracy_train) / len(self.accuracy_train)
+        wandb.log({'train_epoch_loss': loss, 'train_accuracy': accuracy_train_mean})
+
+        # Take the prediction with the highest confidence
+        for instance_id, pred in self.train_predictions.items():
+                pred.sort(key=lambda x: x[1], reverse=True)
+                self.final_train_predictions[instance_id] = config.fine_to_coarse[pred[0][0]]
+
+        # Compute the metrics
+        compute_metrics(self.final_train_predictions, "train")
+
+        # Reset the metrics
+        self.train_losses = []
+        self.accuracy_train = []
+        self.train_predictions = {}
+        self.final_train_predictions = {}
+            
+    def on_validation_epoch_end(self):
+        """
+        Method called at the end of the validation epoch.
+
+        It collects the predictions for the validation set and computes the metrics.
+
+        The metrics are logged to wandb.
+        """
+
+        # Compute the mean loss and accuracy
+        loss = sum(self.val_losses) / len(self.val_losses)
+        accuracy_val_mean = sum(self.accuracy_val) / len(self.accuracy_val)
+        wandb.log({'val_epoch_loss': loss, 'val_accuracy': accuracy_val_mean})
+
+        # Take the prediction with the highest confidence
+        for instance_id, pred in self.val_predictions.items():
+                pred.sort(key=lambda x: x[1], reverse=True)
+                self.final_val_predictions[instance_id] = config.fine_to_coarse[pred[0][0]]
+
+        # Compute the metrics
+        compute_metrics(self.final_val_predictions, "val")
+
+        # Reset the metrics
+        self.val_predictions = {}
+        self.val_losses = []
+        self.accuracy_val = []
+        self.final_val_predictions = {}
+
+    def predict(self, instance_ids: list,
+                input_ids: torch.Tensor,
+                candidates: list,
+                attention_masks: torch.Tensor,
+                token_type_ids: torch.Tensor,
+                target_mask: torch.Tensor) -> dict:
+        """
+        Predict the word sense for a given set of instances with a pretrained glossBERT model.
+        Args:
+            instance_ids (list): List of instance ids.
+            input_ids (torch.Tensor): Input token ids.                  [B, max_len]
+            candidates (list): List of candidate words.
+            attention_masks (torch.Tensor): Attention mask.             [B, max_len]
+            token_type_ids (torch.Tensor): Segment token ids.           [B, max_len]
+            target_mask (torch.Tensor) : Target mask.                   [B, max_len]
+        Returns:
+            dict: Dictionary with the predictions.
+        """
+
+        # Forward pass
+        logits = self.forward(input_ids=input_ids,
+                    token_type_ids=token_type_ids,
+                    attention_mask=attention_masks,
+                    target=target_mask)
+        
+        all_predictions = {}
+        predictions = {}
+
+        # Load the results and group them by instance_id
+        for i, sentence_id in enumerate(instance_ids):
+            if sentence_id not in all_predictions.keys():
+                all_predictions[sentence_id] = []
+            all_predictions[sentence_id].append((candidates[i], float(logits[i, 1])))
+
+        # Take the prediction with the highest confidence
+        for instance_id, pred in all_predictions.items():
+            pred.sort(key=lambda x: x[1], reverse=True)
+            predictions[instance_id] = config.fine_to_coarse[pred[0][0]]
+        
+        return predictions
+
+    def write_prediction(self, instance_id: int, prediction: str, value: float, label: int, step: str):
+        with open(config.PREDICTION_PATH, 'a') as f:
+                f.write('(' +step+') '+str(instance_id) + ', ' + str(prediction) + ',  ' + str(value.item())[:5] + f", ({label})\n")
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-5)
+        """
+        Configure the optimizer for the model.
+        Returns:
+            torch.optim.AdamW: AdamW optimizer.
+        """
+        optimizer = torch.optim.AdamW(self.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY)
         return optimizer
     
-    def training_epoch_end(self, outputs) -> None:
-        loss = sum(output['loss'] for output in outputs) / len(outputs)
-        accuracy_train_mean = sum(self.accuracy_train) / len(self.accuracy_train)
-        accuracy_val_mean = sum(self.accuracy_val) / len(self.accuracy_val)
-        self.accuracy_train = []
-        self.accuracy_val = []
-
-        print("Epoch: {}, Train loss: {}, Train accuracy: {}, Val accuracy: {}".format(self.current_epoch, loss, accuracy_train_mean, accuracy_val_mean))
-        # train metrics
-        for instance_id, pred in self.train_predictions.items():
-                pred.sort(key=lambda x: x[1], reverse=True)
-                self.train_predictions[instance_id] = pred[0][0]
-        
-        for instance_id, pred in self.val_predictions.items():
-                pred.sort(key=lambda x: x[1], reverse=True)
-                self.val_predictions[instance_id] = pred[0][0]
-
-        self.print_metrics()
-
-        self.train_predictions = {}
-        self.val_predictions = {}
-            
-            
-
-    def write_prediction(self, istance_id, prediction, value):
-        with open(config.PREDICTION_PATH, 'a') as f:
-            for i in range(len(prediction)):
-                f.write(str(istance_id[i]) + ',' + str(prediction[i]) + ',' + str(value[i].item()) + '\n')
-
-    def print_metrics(self):
-        correct = 0
-        total = 0
-        for instance_id, pred in self.train_predictions.items():
-            if pred == config.label_pairs_fine[instance_id]:
-                correct += 1
-            total += 1
-        train_accuracy = round(correct/total, 3)
-        print("Accuracy for train: {}".format(train_accuracy))
-
-        correct = 0
-        total = 0
-        for instance_id, pred in self.val_predictions.items():
-            if pred == config.label_pairs_fine[instance_id]:
-                correct += 1
-            total += 1
-        val_accuracy = round(correct/total, 3)
-        print("Accuracy for validation: {}".format(val_accuracy))
-
-
-# class ConSecModel(LightningModule):
-#     def __init__(self, num_senses):
-#         super(ConSecModel, self).__init__()
-
-#         # Load the pre-trained model
-#         self.bert = AutoModel.from_pretrained('roberta-base')
-
-#         # Initialize the sense embeddings
-#         self.sense_embeddings = nn.Embedding(num_senses, self.bert.config.hidden_size)
-
-#         # Define a linear layer for the sense prediction
-#         self.fc = nn.Linear(self.bert.config.hidden_size, num_senses)
-
-#         # Define the loss function
-#         self.loss_fn = nn.CrossEntropyLoss()
-
-#     def forward(self, input_ids, attention_mask, candidate_indices):
-#         # Generate contextualized word representations
-#         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-#         word_representations = outputs.last_hidden_state
-
-#         # Select the word representation of the ambiguous word
-#         ambiguous_word_representations = word_representations[:, 0, :]
-
-#         # Select the sense representations of the candidate senses
-#         candidate_representations = self.sense_embeddings(candidate_indices)
-
-#         # Compute the sense scores
-#         sense_scores = torch.bmm(candidate_representations, ambiguous_word_representations.unsqueeze(-1)).squeeze(-1)
-
-#         # Compute the sense probabilities
-#         sense_probs = nn.functional.softmax(sense_scores, dim=-1)
-
-#         return sense_probs
-    
-
-#     def training_step(self, batch, batch_idx):
-#         input_ids, attention_mask, candidates, labels = batch
-#         sense_representations, sense_probs = self(input_ids, attention_mask, candidates)
-#         print(sense_probs)
-#         loss = self.loss_fn(sense_probs.view(-1, sense_probs.size(-1)), labels.view(-1))
-#         self.log('train_loss', loss)
-#         return loss
-
-#     def validation_step(self, batch, batch_idx):
-#         input_ids, attention_mask, candidates, labels = batch
-#         sense_representations, sense_probs = self(input_ids, attention_mask, candidates)
-#         loss = self.loss_fn(sense_probs.view(-1, sense_probs.size(-1)), labels.view(-1))
-#         self.log('val_loss', loss)
-    
-#     def configure_optimizers(self):
-#         # Define your optimizer
-#         return torch.optim.Adam(self.parameters())
-
-# class ESCModel(LightningModule):
-#     def __init__(self):
-#         super().__init__()
-#         self.bert = BertModel.from_pretrained('bert-base-uncased')
-#         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-#         self.linear = nn.Linear(self.bert.config.hidden_size, 1)
-#         self.loss = nn.BCEWithLogitsLoss()
-
-#     def forward(self, input_ids, attention_mask):
-#         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-#         logits = self.linear(outputs.last_hidden_state)
-#         return logits
-
-#     def training_step(self, batch, batch_idx):
-#         input_ids, attention_mask, labels = batch
-#         logits = self(input_ids, attention_mask)
-#         loss = self.loss(logits.view(-1), labels.view(-1))
-#         self.log('train_loss', loss)
-#         return loss
-
-#     def configure_optimizers(self):
-#         return torch.optim.Adam(self.parameters(), lr=1e-5)
-
-
-
-
-# def sense_vocabolary(definitions):
-
-#     # Load the pre-trained model and tokenizer
-#     tokenizer = AutoTokenizer.from_pretrained('roberta-base')
-#     model = AutoModel.from_pretrained('roberta-base')
-
-#     # Initialize a dictionary to store the sense embeddings
-#     sense_embeddings = {}
-
-#     # For each cluster in your dataset
-#     for cluster, senses in definitions.items():
-#         # Initialize a list to store the embeddings for this cluster
-#         cluster_embeddings = []
-
-#         # For each sense in the cluster
-#         for sense in senses:
-#             # Get the definition of the sense
-#             definition = list(sense.values())[0]
-
-#             # Tokenize the definition
-#             inputs = tokenizer(definition, return_tensors='pt')
-
-#             # Generate an embedding for the definition
-#             outputs = model(**inputs)
-#             embedding = outputs.last_hidden_state.mean(dim=1)
-
-#             # Add the embedding to the list
-#             cluster_embeddings.append(embedding)
-
-#         # Average the embeddings to get a single embedding for the cluster
-#         cluster_embedding = torch.stack(cluster_embeddings).mean(dim=0)
-
-#         # Store the cluster embedding in the dictionary
-#         sense_embeddings[cluster] = cluster_embedding
-
-
-
-

@@ -8,6 +8,9 @@
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 
-
+__pycache__
+lightning_logs
+wandb
 data
 logs
+model
